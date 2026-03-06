@@ -1,0 +1,69 @@
+{
+    "name": "antigravity-chat-proxy",
+    "displayName": "Antigravity Chat Proxy",
+    "description": "Chat with Gemini AI from any browser via this extension",
+    "version": "0.2.0",
+    "publisher": "belal",
+    "engines": {
+        "vscode": "^1.95.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [
+        "onStartupFinished"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "antigravity-chat-proxy.start",
+                "title": "Chat Proxy: Start HTTP Server"
+            },
+            {
+                "command": "antigravity-chat-proxy.stop",
+                "title": "Chat Proxy: Stop HTTP Server"
+            }
+        ],
+        "configuration": {
+            "title": "Antigravity Chat Proxy",
+            "properties": {
+                "antigravity-chat-proxy.port": {
+                    "type": "number",
+                    "default": 3456,
+                    "description": "Port for the HTTP server"
+                },
+                "antigravity-chat-proxy.host": {
+                    "type": "string",
+                    "default": "0.0.0.0",
+                    "description": "Host to bind the HTTP server to"
+                },
+                "antigravity-chat-proxy.geminiApiKey": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Your Google Gemini API key (get one free at ai.google.dev)"
+                },
+                "antigravity-chat-proxy.model": {
+                    "type": "string",
+                    "default": "gemini-2.5-flash",
+                    "description": "Gemini model to use (e.g., gemini-2.5-flash, gemini-2.5-pro)"
+                }
+            }
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "package": "npx -y @vscode/vsce package --no-dependencies --allow-missing-repository"
+    },
+    "dependencies": {
+        "@google/genai": "^1.0.0",
+        "puppeteer-core": "^24.38.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "@types/vscode": "^1.95.0",
+        "typescript": "^5.5.0"
+    }
+}

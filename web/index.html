@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Antigravity Agent</title>
+  <meta name="description" content="Chat with the Antigravity AI Agent from any browser">
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Marked.js for Markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- highlight.js for code syntax highlighting -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/highlight.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header id="header">
+      <div class="header-left">
+        <div class="logo">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            <line x1="2" y1="12" x2="22" y2="12"/>
+          </svg>
+        </div>
+        <div class="header-title">
+          <h1>Antigravity</h1>
+          <span class="header-subtitle" id="status-indicator">Agent</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <button id="new-chat-btn" class="icon-btn" title="New Chat" aria-label="New Chat">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+        <button id="settings-btn" class="icon-btn" title="Settings" aria-label="Settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Messages Area -->
+    <main id="messages" role="log" aria-live="polite">
+      <div id="welcome-screen">
+        <div class="welcome-icon">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="url(#gradient)" stroke-width="1.5">
+            <defs>
+              <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#6366f1"/>
+                <stop offset="100%" style="stop-color:#a855f7"/>
+              </linearGradient>
+            </defs>
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            <line x1="2" y1="12" x2="22" y2="12"/>
+          </svg>
+        </div>
+        <h2>Antigravity Agent</h2>
+        <p>Ask anything. The agent has access to your IDE — files, terminal, search, and more.</p>
+        <div class="quick-prompts">
+          <button class="quick-prompt" data-prompt="What files are in the current workspace?">📁 List workspace files</button>
+          <button class="quick-prompt" data-prompt="Explain the architecture of this project">🏗️ Explain architecture</button>
+          <button class="quick-prompt" data-prompt="Help me debug the most recent error">🐛 Debug last error</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Input Area -->
+    <footer id="input-area">
+      <div class="input-wrapper">
+        <textarea 
+          id="chat-input" 
+          placeholder="Ask the Antigravity agent..." 
+          rows="1"
+          aria-label="Chat message input"
+        ></textarea>
+        <button id="send-btn" aria-label="Send message" disabled>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+      <div class="input-hint">
+        <span>Enter to send · Shift+Enter for new line</span>
+        <span id="model-info"></span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
