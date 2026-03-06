@@ -1,10 +1,15 @@
 /**
- * Antigravity Chat Proxy — CDP-based automation
+ * Antigravity Chat Proxy — CDP-based automation (v2: Rich Streaming)
  * 
  * Connects to Antigravity's Electron debugging port via CDP,
  * exposes an HTTP API that forwards chat messages by typing
  * into the Antigravity chat input and reading agent responses
  * from the DOM.
+ * 
+ * v2 enhancements:
+ *   - Full agent state scraping (thinking, tool calls, responses, HITL)
+ *   - Typed SSE events with state diffing
+ *   - HITL approve/reject endpoints
  * 
  * Prerequisites:
  *   Launch Antigravity with: antigravity . --remote-debugging-port=9223
@@ -25,7 +30,7 @@ const HTTP_PORT = 3457;
 
 let workbenchPage = null;
 let browser = null;
-let allWorkbenches = [];  // stores {page, title, url} for each window
+let allWorkbenches = [];
 let activeWindowIdx = 0;
 
 // ── Connect to Antigravity's Electron app ──────────────────────────────
@@ -34,7 +39,7 @@ async function discoverWorkbenches() {
   if (!browser || !browser.isConnected()) {
     browser = await puppeteer.connect({
       browserURL: `http://localhost:${CDP_PORT}`,
-      defaultViewport: null  // Don't resize the IDE window
+      defaultViewport: null
     });
   }
   const pages = await browser.pages();
@@ -79,62 +84,209 @@ function selectWindow(idx) {
 }
 
 // ── DOM Selectors ──────────────────────────────────────────────────────
-// Based on reverse-engineering the Antigravity IDE DOM structure:
-//
-// #conversation
-//   ├── div.flex.w-full.grow (messages area)
-//   │   └── div.h-full.overflow-y-auto (scroll container)
-//   │       └── div.mx-auto.w-full (message list — THIS is what we read)
-//   └── div.relative.flex.flex-col (input area)
-//       └── #antigravity.agentSidePanelInputBox
-//           └── div[contenteditable="true"][role="textbox"] (chat input)
 
 const SELECTORS = {
   chatInput: '#antigravity\\.agentSidePanelInputBox [contenteditable="true"][role="textbox"]',
   messageList: '#conversation > div:first-child .mx-auto.w-full',
   conversation: '#conversation',
-  // Spinner: appears while agent is running
   spinner: '.antigravity-agent-side-panel .animate-spin',
 };
 
-// ── Chat interaction helpers ───────────────────────────────────────────
+// ── Full Agent State Scraper ───────────────────────────────────────────
 
-/** Check if the agent crashed or terminated with an error */
-async function checkForAgentError() {
-  return workbenchPage.evaluate(() => {
+/**
+ * Get a comprehensive snapshot of the entire agent panel state.
+ * Returns: { isRunning, thinking[], toolCalls[], responses[], notifications[], error }
+ */
+async function getFullAgentState() {
+  return workbenchPage.evaluate((spinnerSel) => {
+    const getClass = (el) => (el?.getAttribute ? el.getAttribute('class') : '') || '';
+
     const panel = document.querySelector('.antigravity-agent-side-panel');
-    if (!panel) return null;
+    if (!panel) return { isRunning: false, thinking: [], toolCalls: [], responses: [], notifications: [], error: null };
 
-    const text = panel.textContent || '';
+    // ── 1. Spinner / Running state ──
+    let isRunning = false;
+    const spinners = panel.querySelectorAll(spinnerSel);
+    for (const spinner of spinners) {
+      let el = spinner;
+      let hidden = false;
+      while (el) {
+        const cls = getClass(el);
+        if (cls.includes('invisible') || cls.includes('opacity-0')) {
+          hidden = true;
+          break;
+        }
+        el = el.parentElement;
+      }
+      if (!hidden) { isRunning = true; break; }
+    }
+
+    // ── 2. Thinking blocks ──
+    // Thinking toggles are buttons starting with "Thought for" inside .isolate
+    const thinking = [];
+    const thinkingBtns = Array.from(panel.querySelectorAll('button')).filter(b =>
+      b.textContent?.trim().startsWith('Thought for')
+    );
+    for (const btn of thinkingBtns) {
+      thinking.push({ time: btn.textContent.trim() });
+    }
+
+    // ── 3. Tool call steps ──
+    // Each tool step is wrapped in .flex.flex-col.gap-2 with border/rounded
+    const toolCalls = [];
+    const toolContainers = panel.querySelectorAll('.flex.flex-col.gap-2.border.rounded-lg.my-1');
+    for (const container of toolContainers) {
+      // Find header: .mb-1.px-2.py-1.text-sm.border-b
+      const header = container.querySelector('.mb-1.px-2.py-1.text-sm');
+      const statusSpan = header?.querySelector('span.opacity-60');
+      const status = statusSpan?.textContent?.trim() || '';
+
+      // Find file path / cwd
+      const pathSpan = container.querySelector('span.font-mono.text-sm');
+      const filePath = pathSpan?.textContent?.trim() || '';
+
+      // Find command text (after the $ sign)
+      let command = '';
+      const allSpans = container.querySelectorAll('span');
+      let foundDollar = false;
+      for (const s of allSpans) {
+        if (foundDollar) {
+          const t = s.textContent?.trim();
+          if (t && !t.startsWith('Ask every time') && !t.startsWith('Exit code')) {
+            command = t;
+            break;
+          }
+        }
+        if (s.textContent?.trim() === '$') foundDollar = true;
+      }
+
+      // Find exit code
+      let exitCode = null;
+      for (const s of allSpans) {
+        const t = s.textContent?.trim() || '';
+        if (t.startsWith('Exit code')) {
+          exitCode = t;
+          break;
+        }
+      }
+
+      // Check for Cancel button (indicates pending HITL)
+      const hasCancelBtn = !!container.querySelector('button') &&
+        Array.from(container.querySelectorAll('button')).some(b => b.textContent?.trim() === 'Cancel');
+
+      // Determine tool type from status text
+      let type = 'unknown';
+      const sl = status.toLowerCase();
+      if (sl.includes('command')) type = 'command';
+      else if (sl.includes('file') || sl.includes('edit') || sl.includes('creat') || sl.includes('writ')) type = 'file';
+      else if (sl.includes('search') || sl.includes('grep')) type = 'search';
+      else if (sl.includes('read') || sl.includes('view')) type = 'read';
+      else if (sl.includes('brows')) type = 'browser';
+
+      // Check for embedded terminal output
+      const terminal = container.querySelector('.component-shared-terminal');
+      let terminalOutput = '';
+      if (terminal) {
+        const rows = terminal.querySelector('.xterm-rows');
+        if (rows) terminalOutput = rows.textContent?.substring(0, 500) || '';
+      }
+
+      toolCalls.push({
+        status,
+        type,
+        path: filePath,
+        command: command || null,
+        exitCode,
+        hasCancelBtn,
+        hasTerminal: !!terminal,
+        terminalOutput: terminalOutput || null,
+      });
+    }
+
+    // ── 4. Notify user containers ──
+    const notifications = [];
+    const notifyBlocks = panel.querySelectorAll('.notify-user-container');
+    for (const block of notifyBlocks) {
+      const clone = block.cloneNode(true);
+      clone.querySelectorAll('style, script').forEach(el => el.remove());
+      const text = clone.textContent?.trim();
+      if (text) notifications.push(text);
+    }
+
+    // ── 5. Final response blocks ──
+    const responses = [];
+    const textBlocks = Array.from(panel.querySelectorAll('.leading-relaxed.select-text'));
+    const finalBlocks = textBlocks.filter(el =>
+      el.parentElement && getClass(el.parentElement).includes('gap-y-3')
+    );
+    for (const block of finalBlocks) {
+      const clone = block.cloneNode(true);
+      clone.querySelectorAll('style, script').forEach(el => el.remove());
+      const text = clone.textContent?.trim();
+      if (text) responses.push(text);
+    }
+
+    // ── 6. Error detection ──
+    let error = null;
+    const panelText = panel.textContent || '';
     const errorPatterns = [
       'Agent terminated due to error',
       'error persists',
       'start a new conversation',
     ];
     for (const pattern of errorPatterns) {
-      if (text.includes(pattern)) {
-        // Try to extract the specific error message block
-        const walk = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT, null, false);
+      if (panelText.includes(pattern)) {
+        const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT, null, false);
         let n;
-        while (n = walk.nextNode()) {
+        while (n = walker.nextNode()) {
           if (n.textContent.includes('Agent terminated')) {
-            return n.textContent.trim();
+            error = n.textContent.trim();
+            break;
           }
         }
-        return '[Agent terminated due to error]';
+        if (!error) error = '[Agent terminated due to error]';
+        break;
       }
     }
-    return null;
-  });
+
+    // ── 7. File change cards ──
+    // File diffs use .lucide-file-diff icons, regular files use .lucide-file
+    const fileChanges = [];
+    const fileDiffIcons = panel.querySelectorAll('svg.lucide-file-diff');
+    for (const icon of fileDiffIcons) {
+      const parent = icon.closest('.flex.items-center');
+      if (parent) {
+        const nameSpan = parent.querySelector('span');
+        if (nameSpan) {
+          fileChanges.push({
+            fileName: nameSpan.textContent?.trim() || '',
+            type: 'diff',
+          });
+        }
+      }
+    }
+
+    return {
+      isRunning,
+      thinking,
+      toolCalls,
+      responses,
+      notifications,
+      error,
+      fileChanges,
+    };
+  }, SELECTORS.spinner);
 }
 
-/** Get the agent's final user-facing response */
+// ── Legacy helpers (kept for /api/chat blocking endpoint) ──────────────
+
 async function getAgentResponseText() {
   return workbenchPage.evaluate(() => {
+    const getClass = (el) => (el?.getAttribute ? el.getAttribute('class') : '') || '';
     const panel = document.querySelector('.antigravity-agent-side-panel');
     if (!panel) return '';
 
-    // 1. Check for explicit notify blocks first (e.g. system alerts, walkthroughs)
     const notifyBlocks = panel.querySelectorAll('.notify-user-container');
     if (notifyBlocks.length > 0) {
       const lastBlock = notifyBlocks[notifyBlocks.length - 1];
@@ -143,20 +295,12 @@ async function getAgentResponseText() {
       return clone.textContent?.trim() || '';
     }
 
-    // 2. Otherwise get the standard markdown replies
-    // The DOM puts "thoughts" in an unclassed <div>, but actual responses
-    // are inside a wrapper with "flex-col gap-y-3" alongside the action buttons
     const textBlocks = Array.from(panel.querySelectorAll('.leading-relaxed.select-text'));
-
-    // Filter out thinking blocks by checking parent classes
-    const finalBlocks = textBlocks.filter(el => {
-      const parent = el.parentElement;
-      return parent && parent.classList.contains('gap-y-3');
-    });
+    const finalBlocks = textBlocks.filter(el =>
+      el.parentElement && getClass(el.parentElement).includes('gap-y-3')
+    );
 
     if (finalBlocks.length === 0) return '';
-
-    // Get the LAST final block (most recent agent markdown response)
     const lastBlock = finalBlocks[finalBlocks.length - 1];
     const clone = lastBlock.cloneNode(true);
     clone.querySelectorAll('style, script').forEach(el => el.remove());
@@ -164,47 +308,66 @@ async function getAgentResponseText() {
   });
 }
 
-/** Get count of response blocks (both notify containers and markdown replies) */
 async function getResponseBlockCount() {
   return workbenchPage.evaluate(() => {
+    const getClass = (el) => (el?.getAttribute ? el.getAttribute('class') : '') || '';
     const panel = document.querySelector('.antigravity-agent-side-panel');
     if (!panel) return 0;
     const notifyCount = panel.querySelectorAll('.notify-user-container').length;
     const mdBlocks = Array.from(panel.querySelectorAll('.leading-relaxed.select-text'))
-      .filter(el => el.parentElement && el.parentElement.classList.contains('gap-y-3'));
+      .filter(el => el.parentElement && getClass(el.parentElement).includes('gap-y-3'));
     return notifyCount + mdBlocks.length;
   });
 }
 
-/** Check if the agent is still running by looking for a VISIBLE spinner */
 async function isAgentRunning() {
   return workbenchPage.evaluate((spinnerSel) => {
     const spinners = document.querySelectorAll(spinnerSel);
     for (const spinner of spinners) {
-      // Walk up the tree to check if any ancestor has 'invisible' or 'opacity-0'
       let el = spinner;
       let hidden = false;
       while (el) {
-        if (el.classList && (el.classList.contains('invisible') || el.classList.contains('opacity-0'))) {
+        const cls = el.getAttribute ? el.getAttribute('class') : '';
+        if (cls && (cls.includes('invisible') || cls.includes('opacity-0'))) {
           hidden = true;
           break;
         }
         el = el.parentElement;
       }
-      if (!hidden) return true; // Found a truly visible spinner
+      if (!hidden) return true;
     }
     return false;
   }, SELECTORS.spinner);
 }
 
+async function checkForAgentError() {
+  return workbenchPage.evaluate(() => {
+    const panel = document.querySelector('.antigravity-agent-side-panel');
+    if (!panel) return null;
+    const text = panel.textContent || '';
+    const errorPatterns = ['Agent terminated due to error', 'error persists', 'start a new conversation'];
+    for (const pattern of errorPatterns) {
+      if (text.includes(pattern)) {
+        const walk = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT, null, false);
+        let n;
+        while (n = walk.nextNode()) {
+          if (n.textContent.includes('Agent terminated')) return n.textContent.trim();
+        }
+        return '[Agent terminated due to error]';
+      }
+    }
+    return null;
+  });
+}
+
+// ── Message sending ───────────────────────────────────────────────────
+
 async function sendMessage(text) {
   console.log(`[Chat] Sending: "${text.substring(0, 60)}${text.length > 60 ? '...' : ''}"`);
 
-  // Click the input to focus it
   await workbenchPage.click(SELECTORS.chatInput);
   await sleep(200);
 
-  // Clear existing content and set new text
   await workbenchPage.evaluate((sel, msg) => {
     const el = document.querySelector(sel);
     if (el) {
@@ -215,39 +378,87 @@ async function sendMessage(text) {
   }, SELECTORS.chatInput, text);
   await sleep(300);
 
-  // Press Enter to send
   await workbenchPage.keyboard.press('Enter');
   console.log(`[Chat] Sent.`);
 }
 
-let isBusy = false;
+// ── HITL interaction ──────────────────────────────────────────────────
+
+async function clickApproveButton() {
+  return workbenchPage.evaluate(() => {
+    const panel = document.querySelector('.antigravity-agent-side-panel');
+    if (!panel) return { success: false, error: 'No panel found' };
+
+    // Look for common approval button patterns
+    const buttons = Array.from(panel.querySelectorAll('button'));
+
+    // Priority 1: explicit "Run" or "Approve" buttons
+    for (const btn of buttons) {
+      const text = btn.textContent?.trim().toLowerCase() || '';
+      if ((text === 'run' || text === 'approve' || text === 'allow' || text === 'yes') && !btn.disabled) {
+        btn.click();
+        return { success: true, clicked: btn.textContent?.trim() };
+      }
+    }
+
+    // Priority 2: Look for the action button in the HITL footer area
+    // The footer has .rounded-b.border-t and contains action buttons
+    const footers = panel.querySelectorAll('.rounded-b.border-t');
+    for (const footer of footers) {
+      const actionBtns = footer.querySelectorAll('button');
+      for (const btn of actionBtns) {
+        const text = btn.textContent?.trim().toLowerCase() || '';
+        if (text !== 'cancel' && !btn.disabled) {
+          btn.click();
+          return { success: true, clicked: btn.textContent?.trim() };
+        }
+      }
+    }
+
+    return { success: false, error: 'No approve button found' };
+  });
+}
+
+async function clickRejectButton() {
+  return workbenchPage.evaluate(() => {
+    const panel = document.querySelector('.antigravity-agent-side-panel');
+    if (!panel) return { success: false, error: 'No panel found' };
+
+    const buttons = Array.from(panel.querySelectorAll('button'));
+    for (const btn of buttons) {
+      const text = btn.textContent?.trim().toLowerCase() || '';
+      if ((text === 'cancel' || text === 'reject' || text === 'deny') && !btn.disabled) {
+        btn.click();
+        return { success: true, clicked: btn.textContent?.trim() };
+      }
+    }
+
+    return { success: false, error: 'No reject/cancel button found' };
+  });
+}
+
+// ── Blocking wait (legacy /api/chat) ──────────────────────────────────
 
 async function waitForResponse(userMessage, timeoutMs = 180000) {
   const startTime = Date.now();
   const initialBlockCount = await getResponseBlockCount();
   console.log(`[Chat] Waiting for response... (initial blocks: ${initialBlockCount})`);
 
-  // Phase 1: Wait for agent to start processing
-  // Either the spinner appears OR we see a new response block
+  // Phase 1: Wait for agent to start
   let started = false;
-  for (let i = 0; i < 40; i++) { // up to 12s
+  for (let i = 0; i < 40; i++) {
     await sleep(300);
-
     if (await isAgentRunning()) {
       console.log(`[Chat] Agent processing (spinner detected)`);
       started = true;
       break;
     }
-
-    // If block count increased and spinner is gone, agent finished quickly
     const blocks = await getResponseBlockCount();
     if (blocks > initialBlockCount) {
       console.log(`[Chat] New response block(s) detected (${blocks} > ${initialBlockCount})`);
       started = true;
-      // Wait a bit more to see if spinner appears (agent might still be running)
       await sleep(500);
       if (!await isAgentRunning()) {
-        // Agent already finished! Read the response immediately
         const response = await getAgentResponseText();
         console.log(`[Chat] ✅ Quick response (${response.length} chars)`);
         return response;
@@ -261,10 +472,9 @@ async function waitForResponse(userMessage, timeoutMs = 180000) {
     return await getAgentResponseText() || '[Agent did not respond]';
   }
 
-  // Phase 2: Wait for agent to finish (spinner gone + block count stable)
+  // Phase 2: Wait for completion
   let doneCount = 0;
   while (Date.now() - startTime < timeoutMs) {
-    // Check for agent crash/error first
     const errorMsg = await checkForAgentError();
     if (errorMsg) {
       console.log(`[Chat] ❌ Agent error detected: ${errorMsg.substring(0, 80)}`);
@@ -280,7 +490,6 @@ async function waitForResponse(userMessage, timeoutMs = 180000) {
           console.log(`[Chat] ✅ Response complete (${response.length} chars)`);
           return response;
         }
-        // No response and no spinner — check for error one more time
         const err = await checkForAgentError();
         if (err) {
           console.log(`[Chat] ❌ Agent error: ${err.substring(0, 80)}`);
@@ -295,12 +504,8 @@ async function waitForResponse(userMessage, timeoutMs = 180000) {
     await sleep(500);
   }
 
-  // Timeout — check for error before giving up
   const errorMsg = await checkForAgentError();
-  if (errorMsg) {
-    console.log(`[Chat] ❌ Timeout with agent error: ${errorMsg.substring(0, 80)}`);
-    return errorMsg;
-  }
+  if (errorMsg) return errorMsg;
   const response = await getAgentResponseText();
   console.log(`[Chat] ⏱ Timeout. Got ${response.length} chars`);
   return response || '[Timeout: No response received]';
@@ -310,9 +515,94 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+// ── State Diffing for SSE Stream ──────────────────────────────────────
+
+/**
+ * Compare two agent states and return typed events for any changes.
+ */
+function diffStates(prev, curr) {
+  const events = [];
+
+  // New thinking blocks
+  if (curr.thinking.length > prev.thinking.length) {
+    for (let i = prev.thinking.length; i < curr.thinking.length; i++) {
+      events.push({ type: 'thinking', data: curr.thinking[i] });
+    }
+  }
+
+  // New or updated tool calls
+  if (curr.toolCalls.length > prev.toolCalls.length) {
+    for (let i = prev.toolCalls.length; i < curr.toolCalls.length; i++) {
+      events.push({ type: 'tool_call', data: { ...curr.toolCalls[i], index: i, isNew: true } });
+    }
+  }
+  // Updated existing tool calls (status change, exit code appeared, cancel disappeared)
+  const sharedLen = Math.min(prev.toolCalls.length, curr.toolCalls.length);
+  for (let i = 0; i < sharedLen; i++) {
+    const p = prev.toolCalls[i];
+    const c = curr.toolCalls[i];
+    if (p.status !== c.status || p.exitCode !== c.exitCode || p.hasCancelBtn !== c.hasCancelBtn) {
+      events.push({ type: 'tool_call', data: { ...c, index: i, isNew: false } });
+    }
+  }
+
+  // HITL: cancel button appeared on any tool call
+  const prevHITL = prev.toolCalls.some(t => t.hasCancelBtn);
+  const currHITL = curr.toolCalls.some(t => t.hasCancelBtn);
+  if (currHITL && !prevHITL) {
+    const hitlTool = curr.toolCalls.find(t => t.hasCancelBtn);
+    events.push({ type: 'hitl', data: { action: 'approval_required', tool: hitlTool } });
+  } else if (!currHITL && prevHITL) {
+    events.push({ type: 'hitl', data: { action: 'resolved' } });
+  }
+
+  // New response blocks
+  if (curr.responses.length > prev.responses.length) {
+    for (let i = prev.responses.length; i < curr.responses.length; i++) {
+      events.push({ type: 'response', data: { content: curr.responses[i], index: i, partial: curr.isRunning } });
+    }
+  }
+  // Updated last response (text grew)
+  if (curr.responses.length > 0 && prev.responses.length > 0 &&
+    curr.responses.length === prev.responses.length) {
+    const lastIdx = curr.responses.length - 1;
+    if (curr.responses[lastIdx] !== prev.responses[lastIdx]) {
+      events.push({ type: 'response', data: { content: curr.responses[lastIdx], index: lastIdx, partial: curr.isRunning } });
+    }
+  }
+
+  // Notification blocks
+  if (curr.notifications.length > prev.notifications.length) {
+    for (let i = prev.notifications.length; i < curr.notifications.length; i++) {
+      events.push({ type: 'notification', data: { content: curr.notifications[i], index: i } });
+    }
+  }
+
+  // File changes
+  if (curr.fileChanges && prev.fileChanges && curr.fileChanges.length > prev.fileChanges.length) {
+    for (let i = prev.fileChanges.length; i < curr.fileChanges.length; i++) {
+      events.push({ type: 'file_change', data: curr.fileChanges[i] });
+    }
+  }
+
+  // Status change
+  if (prev.isRunning !== curr.isRunning) {
+    events.push({ type: 'status', data: { isRunning: curr.isRunning } });
+  }
+
+  // Error
+  if (curr.error && !prev.error) {
+    events.push({ type: 'error', data: { message: curr.error } });
+  }
+
+  return events;
+}
+
 // ── HTTP Server ────────────────────────────────────────────────────────
 
 function startServer() {
+  const webDir = path.join(__dirname, 'web');
+
   const server = http.createServer(async (req, res) => {
     // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -327,14 +617,14 @@ function startServer() {
 
     const url = new URL(req.url, `http://localhost:${HTTP_PORT}`);
 
-    // Health check
+    // ── Health check ──
     if (url.pathname === '/api/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok', connected: !!workbenchPage }));
       return;
     }
 
-    // List available windows
+    // ── List windows ──
     if (url.pathname === '/api/windows' && req.method === 'GET') {
       try {
         await discoverWorkbenches();
@@ -350,7 +640,7 @@ function startServer() {
       return;
     }
 
-    // Select a window
+    // ── Select window ──
     if (url.pathname === '/api/windows/select' && req.method === 'POST') {
       let body = '';
       req.on('data', chunk => body += chunk);
@@ -374,7 +664,61 @@ function startServer() {
       return;
     }
 
-    // Send chat message (blocking)
+    // ── Get current agent state ──
+    if (url.pathname === '/api/chat/state' && req.method === 'GET') {
+      try {
+        if (!workbenchPage) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Not connected to Antigravity' }));
+          return;
+        }
+        const state = await getFullAgentState();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(state));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
+
+    // ── HITL: Approve ──
+    if (url.pathname === '/api/chat/approve' && req.method === 'POST') {
+      try {
+        if (!workbenchPage) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Not connected' }));
+          return;
+        }
+        const result = await clickApproveButton();
+        res.writeHead(result.success ? 200 : 404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
+
+    // ── HITL: Reject ──
+    if (url.pathname === '/api/chat/reject' && req.method === 'POST') {
+      try {
+        if (!workbenchPage) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Not connected' }));
+          return;
+        }
+        const result = await clickRejectButton();
+        res.writeHead(result.success ? 200 : 404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
+
+    // ── Send chat (blocking) ──
     if (url.pathname === '/api/chat' && req.method === 'POST') {
       let body = '';
       req.on('data', chunk => body += chunk);
@@ -406,7 +750,7 @@ function startServer() {
       return;
     }
 
-    // SSE streaming chat
+    // ── SSE streaming chat (rich typed events) ──
     if (url.pathname === '/api/chat/stream' && req.method === 'POST') {
       let body = '';
       req.on('data', chunk => body += chunk);
@@ -425,42 +769,92 @@ function startServer() {
             'Connection': 'keep-alive'
           });
 
+          // Send initial status
+          const writeEvent = (type, data) => {
+            res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+          };
+
+          writeEvent('status', { isRunning: true, phase: 'sending' });
+
+          // Capture initial state before sending
+          let prevState = await getFullAgentState();
           await sendMessage(message);
 
-          let lastSent = '';
-          const startTime = Date.now();
+          writeEvent('status', { isRunning: true, phase: 'waiting' });
 
+          const startTime = Date.now();
           let doneCount = 0;
+          let started = false;
+
           const interval = setInterval(async () => {
             try {
-              const running = await isAgentRunning();
-              const responseText = await getAgentResponseText();
+              const currState = await getFullAgentState();
 
-              if (responseText.length > 5 && responseText !== lastSent) {
-                res.write(`data: ${JSON.stringify({ content: responseText, done: false })}\n\n`);
-                lastSent = responseText;
+              // Detect start
+              if (!started) {
+                if (currState.isRunning ||
+                  currState.toolCalls.length > prevState.toolCalls.length ||
+                  currState.responses.length > prevState.responses.length ||
+                  currState.thinking.length > prevState.thinking.length) {
+                  started = true;
+                  writeEvent('status', { isRunning: true, phase: 'processing' });
+                }
               }
 
-              if (!running) {
+              // Compute and emit diffs
+              const events = diffStates(prevState, currState);
+              for (const evt of events) {
+                writeEvent(evt.type, evt.data);
+              }
+
+              // Check for completion
+              if (started && !currState.isRunning && !currState.error) {
                 doneCount++;
                 if (doneCount >= 3) {
-                  const finalText = await getAgentResponseText();
-                  res.write(`data: ${JSON.stringify({ content: finalText, done: true })}\n\n`);
+                  // Emit final response
+                  const finalResponse = currState.notifications.length > 0
+                    ? currState.notifications[currState.notifications.length - 1]
+                    : currState.responses.length > 0
+                      ? currState.responses[currState.responses.length - 1]
+                      : '';
+
+                  writeEvent('done', {
+                    finalResponse,
+                    thinking: currState.thinking,
+                    toolCalls: currState.toolCalls,
+                  });
                   clearInterval(interval);
                   res.end();
+                  return;
                 }
               } else {
                 doneCount = 0;
               }
 
-              if (Date.now() - startTime > 180000) {
-                res.write(`data: ${JSON.stringify({ content: lastSent || '[Timeout]', done: true })}\n\n`);
+              // Error
+              if (currState.error) {
+                writeEvent('error', { message: currState.error });
+                writeEvent('done', { error: currState.error });
                 clearInterval(interval);
                 res.end();
+                return;
               }
+
+              // Timeout
+              if (Date.now() - startTime > 300000) { // 5 min timeout for stream
+                const finalResponse = currState.responses.length > 0
+                  ? currState.responses[currState.responses.length - 1]
+                  : '[Timeout]';
+                writeEvent('done', { finalResponse, timeout: true });
+                clearInterval(interval);
+                res.end();
+                return;
+              }
+
+              prevState = currState;
             } catch (e) {
+              writeEvent('error', { message: e.message });
               clearInterval(interval);
-              res.write(`data: ${JSON.stringify({ error: e.message, done: true })}\n\n`);
               res.end();
             }
           }, 500);
@@ -474,10 +868,45 @@ function startServer() {
       return;
     }
 
-    // Serve web frontend
-    if (url.pathname === '/' || url.pathname === '/index.html') {
-      res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(getEmbeddedHTML());
+    // ── Serve static web files ──
+    if (url.pathname.startsWith('/')) {
+      let filePath = url.pathname === '/' ? '/index.html' : url.pathname;
+      const safePath = path.normalize(filePath).replace(/^(\.\.[\/\\])+/, '');
+      const fullPath = path.join(webDir, safePath);
+
+      if (!fullPath.startsWith(webDir)) {
+        res.writeHead(403);
+        res.end('Forbidden');
+        return;
+      }
+
+      const ext = path.extname(fullPath);
+      const mimeTypes = {
+        '.html': 'text/html',
+        '.css': 'text/css',
+        '.js': 'application/javascript',
+        '.json': 'application/json',
+        '.png': 'image/png',
+        '.svg': 'image/svg+xml',
+      };
+
+      fs.readFile(fullPath, (err, data) => {
+        if (err) {
+          // Fallback to index.html for SPA routing
+          fs.readFile(path.join(webDir, 'index.html'), (err2, indexData) => {
+            if (err2) {
+              res.writeHead(404);
+              res.end('Not found');
+            } else {
+              res.writeHead(200, { 'Content-Type': 'text/html' });
+              res.end(indexData);
+            }
+          });
+        } else {
+          res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+          res.end(data);
+        }
+      });
       return;
     }
 
@@ -485,278 +914,21 @@ function startServer() {
     res.end('Not found');
   });
 
-  // Disable default 120s timeout to allow long-running agent tool execution
   server.setTimeout(0);
 
   server.listen(HTTP_PORT, '0.0.0.0', () => {
     console.log(`\n[Server] ✅ Chat proxy running at http://0.0.0.0:${HTTP_PORT}`);
     console.log(`[Server] API:`);
-    console.log(`  POST /api/chat           → Send message, get full response`);
-    console.log(`  POST /api/chat/stream    → Send message, SSE stream`);
+    console.log(`  POST /api/chat           → Send message, get full response (blocking)`);
+    console.log(`  POST /api/chat/stream    → Send message, SSE stream (typed events)`);
+    console.log(`  GET  /api/chat/state     → Get current agent panel state`);
+    console.log(`  POST /api/chat/approve   → Click approve/run button (HITL)`);
+    console.log(`  POST /api/chat/reject    → Click cancel/reject button (HITL)`);
     console.log(`  GET  /api/windows        → List workbench windows`);
     console.log(`  POST /api/windows/select → Switch target window`);
     console.log(`  GET  /api/health         → Health check`);
     console.log(`  GET  /                   → Web chat UI\n`);
   });
-}
-
-function getEmbeddedHTML() {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Antigravity Agent</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg-primary: #08080d;
-      --bg-secondary: #0f0f1a;
-      --bg-tertiary: #161625;
-      --bg-hover: #1e1e33;
-      --border: #1e1e33;
-      --text: #e4e4ef;
-      --text-dim: #8888aa;
-      --accent: #6366f1;
-      --accent-glow: rgba(99, 102, 241, 0.15);
-      --green: #22c55e;
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: var(--bg-primary); color: var(--text);
-      height: 100dvh; display: flex; flex-direction: column;
-      -webkit-font-smoothing: antialiased;
-    }
-    
-    /* Header */
-    header {
-      padding: 14px 20px; 
-      background: linear-gradient(180deg, var(--bg-secondary), var(--bg-primary));
-      border-bottom: 1px solid var(--border);
-      display: flex; align-items: center; gap: 12px;
-      flex-shrink: 0;
-    }
-    .logo {
-      width: 32px; height: 32px; border-radius: 10px;
-      background: linear-gradient(135deg, var(--accent), #a855f7);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 16px; font-weight: 700; color: white;
-    }
-    header h1 { font-size: 1.1em; font-weight: 600; letter-spacing: -0.02em; }
-    .header-left { display: flex; align-items: center; gap: 12px; }
-    .header-right { margin-left: auto; }
-    .status { font-size: 11px; color: var(--green); display: flex; align-items: center; gap: 5px; }
-    .status::before {
-      content: ""; width: 6px; height: 6px; border-radius: 50%;
-      background: var(--green); display: inline-block;
-      animation: pulse 2s ease-in-out infinite;
-    }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-    
-    /* Window selector */
-    #window-select {
-      background: var(--bg-tertiary); color: var(--text);
-      border: 1px solid var(--border); border-radius: 8px;
-      padding: 6px 10px; font-family: inherit; font-size: 12px;
-      cursor: pointer; outline: none; max-width: 200px;
-      transition: border-color 0.2s;
-    }
-    #window-select:focus { border-color: var(--accent); }
-    .window-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
-    
-    /* Messages */
-    #messages {
-      flex: 1; overflow-y: auto; padding: 20px;
-      display: flex; flex-direction: column; gap: 16px;
-      scroll-behavior: smooth;
-    }
-    #messages:empty::after {
-      content: "Send a message to start chatting with Antigravity";
-      color: var(--text-dim); text-align: center;
-      padding: 60px 20px; font-size: 14px;
-    }
-    .msg {
-      max-width: 88%; padding: 12px 16px; border-radius: 14px;
-      line-height: 1.65; font-size: 14px;
-      white-space: pre-wrap; word-wrap: break-word;
-      animation: fadeIn 0.25s ease-out;
-    }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-    .msg.user {
-      align-self: flex-end; 
-      background: linear-gradient(135deg, #4338ca, #6366f1);
-      color: white; border-bottom-right-radius: 4px;
-    }
-    .msg.agent {
-      align-self: flex-start;
-      background: var(--bg-tertiary); border: 1px solid var(--border);
-      border-bottom-left-radius: 4px;
-    }
-    .msg.agent.streaming {
-      border-color: var(--accent);
-      box-shadow: 0 0 20px var(--accent-glow);
-    }
-    .msg .label {
-      font-size: 11px; font-weight: 600; margin-bottom: 6px;
-      text-transform: uppercase; letter-spacing: 0.05em;
-      opacity: 0.6;
-    }
-    
-    /* Input */
-    footer {
-      padding: 12px 16px 16px; flex-shrink: 0;
-      border-top: 1px solid var(--border);
-      background: var(--bg-secondary);
-    }
-    .input-row {
-      display: flex; gap: 10px; align-items: flex-end;
-      background: var(--bg-tertiary); border: 1px solid var(--border);
-      border-radius: 14px; padding: 4px 4px 4px 14px;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-    .input-row:focus-within {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-glow);
-    }
-    #input {
-      flex: 1; border: none; background: transparent; color: var(--text);
-      font-family: inherit; font-size: 14px; resize: none; outline: none;
-      padding: 10px 0; max-height: 120px;
-    }
-    #input::placeholder { color: var(--text-dim); }
-    #send-btn {
-      width: 40px; height: 40px; border-radius: 10px; border: none;
-      background: linear-gradient(135deg, #4338ca, #6366f1);
-      color: white; cursor: pointer; display: flex;
-      align-items: center; justify-content: center;
-      transition: opacity 0.2s, transform 0.1s;
-      flex-shrink: 0;
-    }
-    #send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-    #send-btn:hover:not(:disabled) { opacity: 0.85; }
-    #send-btn:active:not(:disabled) { transform: scale(0.95); }
-    #send-btn svg { width: 18px; height: 18px; }
-    .hint { font-size: 11px; color: var(--text-dim); margin-top: 8px; text-align: center; }
-  </style>
-</head>
-<body>
-  <header>
-    <div class="header-left">
-      <div class="logo">A</div>
-      <div>
-        <h1>Antigravity Agent</h1>
-        <div class="status">Connected</div>
-      </div>
-    </div>
-    <div class="header-right">
-      <div class="window-label">Target Window</div>
-      <select id="window-select" onchange="switchWindow(this.value)">
-        <option>Loading...</option>
-      </select>
-    </div>
-  </header>
-  
-  <div id="messages"></div>
-  
-  <footer>
-    <div class="input-row">
-      <textarea id="input" rows="1" placeholder="Ask the Antigravity agent..."
-        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"
-        oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
-      <button id="send-btn" onclick="send()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="22" y1="2" x2="11" y2="13"></line>
-          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-        </svg>
-      </button>
-    </div>
-    <div class="hint">Enter to send · Shift+Enter for new line</div>
-  </footer>
-  
-  <script>
-    const msgs = document.getElementById('messages');
-    const input = document.getElementById('input');
-    const sendBtn = document.getElementById('send-btn');
-    const windowSelect = document.getElementById('window-select');
-    
-    // Load available windows on startup
-    async function loadWindows() {
-      try {
-        const res = await fetch('/api/windows');
-        const data = await res.json();
-        windowSelect.innerHTML = '';
-        data.windows.forEach(w => {
-          const opt = document.createElement('option');
-          opt.value = w.index;
-          opt.textContent = w.title;
-          opt.selected = w.active;
-          windowSelect.appendChild(opt);
-        });
-      } catch (e) {
-        windowSelect.innerHTML = '<option>Error loading</option>';
-      }
-    }
-    loadWindows();
-    
-    async function switchWindow(idx) {
-      try {
-        await fetch('/api/windows/select', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ index: parseInt(idx) })
-        });
-      } catch (e) { console.error(e); }
-    }
-    
-    function addMsg(text, role) {
-      const div = document.createElement('div');
-      div.className = 'msg ' + role;
-      const label = document.createElement('div');
-      label.className = 'label';
-      label.textContent = role === 'user' ? 'You' : 'Antigravity';
-      div.appendChild(label);
-      const content = document.createElement('div');
-      content.textContent = text;
-      div.appendChild(content);
-      msgs.appendChild(div);
-      msgs.scrollTop = msgs.scrollHeight;
-      return { div, content };
-    }
-    
-    let sending = false;
-    async function send() {
-      const text = input.value.trim();
-      if (!text || sending) return;
-      sending = true;
-      input.value = '';
-      input.style.height = 'auto';
-      sendBtn.disabled = true;
-      
-      addMsg(text, 'user');
-      const { div: agentDiv, content: agentContent } = addMsg('Thinking...', 'agent streaming');
-      
-      try {
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text })
-        });
-        const data = await res.json();
-        agentContent.textContent = data.response || data.error || 'No response';
-      } catch (e) {
-        agentContent.textContent = 'Error: ' + e.message;
-      }
-      
-      agentDiv.classList.remove('streaming');
-      sending = false;
-      sendBtn.disabled = false;
-      input.focus();
-    }
-  </script>
-</body>
-</html>`;
 }
 
 // ── Main ───────────────────────────────────────────────────────────────

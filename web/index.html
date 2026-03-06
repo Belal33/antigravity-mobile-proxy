@@ -33,6 +33,23 @@
         </div>
       </div>
       <div class="header-right">
+        <!-- Window Selector -->
+        <div class="window-selector-wrapper" id="window-selector-wrapper">
+          <button id="window-selector-btn" class="window-selector-btn" title="Select Antigravity window" aria-label="Select window">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            <span id="window-selector-label">Window</span>
+            <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+          <div class="window-dropdown" id="window-dropdown">
+            <div class="window-dropdown-header">Antigravity Windows</div>
+            <div id="window-list"></div>
+          </div>
+        </div>
+
         <button id="new-chat-btn" class="icon-btn" title="New Chat" aria-label="New Chat">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
