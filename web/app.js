@@ -230,7 +230,7 @@
             case 'response':
                 if (ctx.typingEl.parentNode) ctx.typingEl.remove();
                 ctx.setFullResponse(data.content);
-                renderMarkdown(ctx.responseContainer, data.content);
+                renderHTML(ctx.responseContainer, data.content);
                 if (data.partial) {
                     ctx.agentMsgEl.classList.add('streaming');
                 } else {
@@ -243,7 +243,7 @@
             case 'notification':
                 if (ctx.typingEl.parentNode) ctx.typingEl.remove();
                 ctx.setFullResponse(data.content);
-                renderMarkdown(ctx.responseContainer, data.content);
+                renderHTML(ctx.responseContainer, data.content);
                 scrollToBottom();
                 break;
 
@@ -267,7 +267,11 @@
                 // If we have a final response that wasn't already rendered
                 if (data.finalResponse && !ctx.getFullResponse()) {
                     ctx.setFullResponse(data.finalResponse);
-                    renderMarkdown(ctx.responseContainer, data.finalResponse);
+                    if (data.isHTML) {
+                        renderHTML(ctx.responseContainer, data.finalResponse);
+                    } else {
+                        renderMarkdown(ctx.responseContainer, data.finalResponse);
+                    }
                 }
                 setStatus('connected', 'Agent');
                 scrollToBottom();
@@ -626,6 +630,17 @@
       <span class="typing-label">Agent is thinking...</span>
     `;
         return div;
+    }
+
+    /**
+     * Render pre-rendered HTML content from Antigravity (already markdown->HTML).
+     * Only applies syntax highlighting to code blocks.
+     */
+    function renderHTML(el, html) {
+        el.innerHTML = html;
+        if (typeof hljs !== 'undefined') {
+            el.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+        }
     }
 
     function renderMarkdown(el, text) {

@@ -96,17 +96,21 @@ const SELECTORS = {
 
 /**
  * Get a comprehensive snapshot of the entire agent panel state.
- * Returns: { isRunning, thinking[], toolCalls[], responses[], notifications[], error }
+ * Includes turn-based scoping to isolate the current conversation turn.
+ * Returns: { isRunning, turnCount, thinking[], toolCalls[], responses[],
+ *           notifications[], error, fileChanges[], lastTurnResponseHTML }
  */
 async function getFullAgentState() {
   return workbenchPage.evaluate((spinnerSel) => {
     const getClass = (el) => (el?.getAttribute ? el.getAttribute('class') : '') || '';
 
     const panel = document.querySelector('.antigravity-agent-side-panel');
-    if (!panel) return { isRunning: false, thinking: [], toolCalls: [], responses: [], notifications: [], error: null };
+    if (!panel) return { isRunning: false, turnCount: 0, thinking: [], toolCalls: [], responses: [], notifications: [], error: null, fileChanges: [], lastTurnResponseHTML: '' };
 
-    // ── 1. Spinner / Running state ──
+    // ── 1. Running state (multi-signal) ──
     let isRunning = false;
+
+    // Signal A: Visible spinner
     const spinners = panel.querySelectorAll(spinnerSel);
     for (const spinner of spinners) {
       let el = spinner;
@@ -122,31 +126,55 @@ async function getFullAgentState() {
       if (!hidden) { isRunning = true; break; }
     }
 
-    // ── 2. Thinking blocks ──
-    // Thinking toggles are buttons starting with "Thought for" inside .isolate
+    // Signal B: Stop/abort button visible (present only during agent runs)
+    if (!isRunning) {
+      const allBtns = panel.querySelectorAll('button');
+      for (const btn of allBtns) {
+        const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+        const text = (btn.textContent?.trim() || '').toLowerCase();
+        if ((text === 'stop' || text === 'abort' || label.includes('stop') || label.includes('abort') || label.includes('interrupt')) &&
+          getComputedStyle(btn).display !== 'none' && getComputedStyle(btn).visibility !== 'hidden') {
+          isRunning = true;
+          break;
+        }
+      }
+    }
+
+    // Signal C: Any tool call with no exit code and a cancel button (still executing)
+    // (checked after tool calls are scraped below)
+
+    // ── 2. Turn structure ──
+    // Each conversation turn is a direct child of .mx-auto.w-full inside the scroll area
+    const conversation = panel.querySelector('#conversation') || document.querySelector('#conversation');
+    const scrollArea = conversation?.querySelector('.overflow-y-auto');
+    const msgList = scrollArea?.querySelector('.mx-auto');
+    const allTurns = msgList ? Array.from(msgList.children) : [];
+    const turnCount = allTurns.length;
+    const lastTurn = allTurns.length > 0 ? allTurns[allTurns.length - 1] : null;
+
+    // Scope our scraping to the last turn only to avoid reading old responses
+    const scopeEl = lastTurn || panel;
+
+    // ── 3. Thinking blocks (scoped to last turn) ──
     const thinking = [];
-    const thinkingBtns = Array.from(panel.querySelectorAll('button')).filter(b =>
+    const thinkingBtns = Array.from(scopeEl.querySelectorAll('button')).filter(b =>
       b.textContent?.trim().startsWith('Thought for')
     );
     for (const btn of thinkingBtns) {
       thinking.push({ time: btn.textContent.trim() });
     }
 
-    // ── 3. Tool call steps ──
-    // Each tool step is wrapped in .flex.flex-col.gap-2 with border/rounded
+    // ── 4. Tool call steps (scoped to last turn) ──
     const toolCalls = [];
-    const toolContainers = panel.querySelectorAll('.flex.flex-col.gap-2.border.rounded-lg.my-1');
+    const toolContainers = scopeEl.querySelectorAll('.flex.flex-col.gap-2.border.rounded-lg.my-1');
     for (const container of toolContainers) {
-      // Find header: .mb-1.px-2.py-1.text-sm.border-b
       const header = container.querySelector('.mb-1.px-2.py-1.text-sm');
       const statusSpan = header?.querySelector('span.opacity-60');
       const status = statusSpan?.textContent?.trim() || '';
 
-      // Find file path / cwd
       const pathSpan = container.querySelector('span.font-mono.text-sm');
       const filePath = pathSpan?.textContent?.trim() || '';
 
-      // Find command text (after the $ sign)
       let command = '';
       const allSpans = container.querySelectorAll('span');
       let foundDollar = false;
@@ -161,7 +189,6 @@ async function getFullAgentState() {
         if (s.textContent?.trim() === '$') foundDollar = true;
       }
 
-      // Find exit code
       let exitCode = null;
       for (const s of allSpans) {
         const t = s.textContent?.trim() || '';
@@ -171,11 +198,9 @@ async function getFullAgentState() {
         }
       }
 
-      // Check for Cancel button (indicates pending HITL)
       const hasCancelBtn = !!container.querySelector('button') &&
         Array.from(container.querySelectorAll('button')).some(b => b.textContent?.trim() === 'Cancel');
 
-      // Determine tool type from status text
       let type = 'unknown';
       const sl = status.toLowerCase();
       if (sl.includes('command')) type = 'command';
@@ -184,7 +209,6 @@ async function getFullAgentState() {
       else if (sl.includes('read') || sl.includes('view')) type = 'read';
       else if (sl.includes('brows')) type = 'browser';
 
-      // Check for embedded terminal output
       const terminal = container.querySelector('.component-shared-terminal');
       let terminalOutput = '';
       if (terminal) {
@@ -193,41 +217,47 @@ async function getFullAgentState() {
       }
 
       toolCalls.push({
-        status,
-        type,
-        path: filePath,
-        command: command || null,
-        exitCode,
-        hasCancelBtn,
-        hasTerminal: !!terminal,
-        terminalOutput: terminalOutput || null,
+        status, type, path: filePath,
+        command: command || null, exitCode, hasCancelBtn,
+        hasTerminal: !!terminal, terminalOutput: terminalOutput || null,
       });
     }
 
-    // ── 4. Notify user containers ──
+    // Signal C from above: any tool still executing = agent still running
+    if (!isRunning && toolCalls.some(t => t.hasCancelBtn && !t.exitCode)) {
+      isRunning = true;
+    }
+
+    // ── 5. Notify user containers (scoped to last turn) ──
     const notifications = [];
-    const notifyBlocks = panel.querySelectorAll('.notify-user-container');
+    const notifyBlocks = scopeEl.querySelectorAll('.notify-user-container');
     for (const block of notifyBlocks) {
       const clone = block.cloneNode(true);
       clone.querySelectorAll('style, script').forEach(el => el.remove());
-      const text = clone.textContent?.trim();
-      if (text) notifications.push(text);
+      const html = clone.innerHTML?.trim();
+      if (html) notifications.push(html);
     }
 
-    // ── 5. Final response blocks ──
+    // ── 6. Final response blocks (scoped to last turn) ──
+    // Extract innerHTML to preserve formatting (rendered markdown)
     const responses = [];
-    const textBlocks = Array.from(panel.querySelectorAll('.leading-relaxed.select-text'));
+    let lastTurnResponseHTML = '';
+    const textBlocks = Array.from(scopeEl.querySelectorAll('.leading-relaxed.select-text'));
     const finalBlocks = textBlocks.filter(el =>
       el.parentElement && getClass(el.parentElement).includes('gap-y-3')
     );
     for (const block of finalBlocks) {
       const clone = block.cloneNode(true);
       clone.querySelectorAll('style, script').forEach(el => el.remove());
-      const text = clone.textContent?.trim();
-      if (text) responses.push(text);
+      const html = clone.innerHTML?.trim();
+      if (html) responses.push(html);
+    }
+    // Store last response's raw HTML for stabilization comparison
+    if (finalBlocks.length > 0) {
+      lastTurnResponseHTML = finalBlocks[finalBlocks.length - 1].innerHTML || '';
     }
 
-    // ── 6. Error detection ──
+    // ── 7. Error detection ──
     let error = null;
     const panelText = panel.textContent || '';
     const errorPatterns = [
@@ -268,13 +298,8 @@ async function getFullAgentState() {
     }
 
     return {
-      isRunning,
-      thinking,
-      toolCalls,
-      responses,
-      notifications,
-      error,
-      fileChanges,
+      isRunning, turnCount, thinking, toolCalls, responses,
+      notifications, error, fileChanges, lastTurnResponseHTML
     };
   }, SELECTORS.spinner);
 }
@@ -785,14 +810,17 @@ function startServer() {
           const startTime = Date.now();
           let doneCount = 0;
           let started = false;
+          let lastStableHTML = '';   // Track response HTML for stabilization
+          const initialTurnCount = prevState.turnCount;
 
           const interval = setInterval(async () => {
             try {
               const currState = await getFullAgentState();
 
-              // Detect start
+              // Detect start via multiple signals
               if (!started) {
                 if (currState.isRunning ||
+                  currState.turnCount > initialTurnCount ||
                   currState.toolCalls.length > prevState.toolCalls.length ||
                   currState.responses.length > prevState.responses.length ||
                   currState.thinking.length > prevState.thinking.length) {
@@ -807,11 +835,40 @@ function startServer() {
                 writeEvent(evt.type, evt.data);
               }
 
-              // Check for completion
+              // Check for completion — requires MULTIPLE conditions:
+              // 1. Agent has started
+              // 2. Agent is no longer running (no spinner, no stop btn, no pending tool calls)
+              // 3. No error
+              // 4. Must be stable for 10 consecutive checks (5 seconds)
+              // 5. Response HTML must be identical for 3 consecutive done checks (content stabilized)
+              // 6. No new content has appeared (tool calls, responses, thinking)
               if (started && !currState.isRunning && !currState.error) {
-                doneCount++;
-                if (doneCount >= 3) {
-                  // Emit final response
+                // Check if any new content appeared — if so, agent might be between steps
+                const contentChanged = (
+                  currState.toolCalls.length !== prevState.toolCalls.length ||
+                  currState.responses.length !== prevState.responses.length ||
+                  currState.thinking.length !== prevState.thinking.length ||
+                  currState.notifications.length !== prevState.notifications.length ||
+                  currState.fileChanges.length !== prevState.fileChanges.length
+                );
+
+                if (contentChanged) {
+                  // New content still appearing — not done yet
+                  doneCount = 0;
+                  lastStableHTML = '';
+                } else {
+                  doneCount++;
+                }
+
+                // Content stabilization: response HTML must stop changing
+                const currentHTML = currState.lastTurnResponseHTML || '';
+                if (doneCount >= 2 && currentHTML && currentHTML !== lastStableHTML) {
+                  doneCount = 1; // Reset, content still changing
+                }
+                lastStableHTML = currentHTML;
+
+                if (doneCount >= 10) {
+                  // Confirmed done — read from current turn's responses (HTML)
                   const finalResponse = currState.notifications.length > 0
                     ? currState.notifications[currState.notifications.length - 1]
                     : currState.responses.length > 0
@@ -820,6 +877,7 @@ function startServer() {
 
                   writeEvent('done', {
                     finalResponse,
+                    isHTML: true,
                     thinking: currState.thinking,
                     toolCalls: currState.toolCalls,
                   });
@@ -829,6 +887,7 @@ function startServer() {
                 }
               } else {
                 doneCount = 0;
+                lastStableHTML = '';
               }
 
               // Error
@@ -840,8 +899,8 @@ function startServer() {
                 return;
               }
 
-              // Timeout
-              if (Date.now() - startTime > 300000) { // 5 min timeout for stream
+              // Timeout (10 min for complex tasks with tool calls)
+              if (Date.now() - startTime > 600000) {
                 const finalResponse = currState.responses.length > 0
                   ? currState.responses[currState.responses.length - 1]
                   : '[Timeout]';
