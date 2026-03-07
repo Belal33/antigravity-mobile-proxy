@@ -335,10 +335,15 @@
         div.setAttribute('data-tool-index', data.index);
 
         const icon = getToolIcon(data.type);
-        const commandHtml = data.command ? `<div class="tool-command"><code>${escapeHtml(data.command)}</code></div>` : '';
+        const commandHtml = data.command
+            ? `<div class="tool-command"><code><span class="tool-dollar">$</span> ${escapeHtml(data.command)}</code></div>`
+            : '';
         const pathHtml = data.path ? `<span class="tool-path">${escapeHtml(data.path)}</span>` : '';
         const exitHtml = data.exitCode ? `<span class="tool-exit ${data.exitCode.includes('0') && !data.exitCode.includes('10') ? 'success' : 'error'}">${escapeHtml(data.exitCode)}</span>` : '';
-        const cancelHtml = data.hasCancelBtn ? '<span class="tool-pending-badge">Pending</span>' : '';
+        const cancelHtml = data.hasCancelBtn ? '<span class="tool-pending-badge">Running</span>' : '';
+        const terminalHtml = data.terminalOutput
+            ? `<div class="tool-terminal-output"><pre>${escapeHtml(data.terminalOutput)}</pre></div>`
+            : '';
 
         div.innerHTML = `
       <div class="tool-card-header">
@@ -353,6 +358,7 @@
         </div>
       </div>
       ${commandHtml}
+      ${terminalHtml}
     `;
         return div;
     }
@@ -363,6 +369,14 @@
 
         const statusText = el.querySelector('.tool-status-text');
         if (statusText) statusText.textContent = data.status;
+
+        // Update or add command if it appeared
+        if (data.command && !el.querySelector('.tool-command')) {
+            const cmdDiv = document.createElement('div');
+            cmdDiv.className = 'tool-command';
+            cmdDiv.innerHTML = `<code><span class="tool-dollar">$</span> ${escapeHtml(data.command)}</code>`;
+            el.appendChild(cmdDiv);
+        }
 
         // Update exit code
         const rightDiv = el.querySelector('.tool-card-right');
@@ -377,6 +391,14 @@
         if (!data.hasCancelBtn) {
             const badge = el.querySelector('.tool-pending-badge');
             if (badge) badge.remove();
+        }
+
+        // Add terminal output if it appeared
+        if (data.terminalOutput && !el.querySelector('.tool-terminal-output')) {
+            const termDiv = document.createElement('div');
+            termDiv.className = 'tool-terminal-output';
+            termDiv.innerHTML = `<pre>${escapeHtml(data.terminalOutput)}</pre>`;
+            el.appendChild(termDiv);
         }
     }
 

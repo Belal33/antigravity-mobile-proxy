@@ -105,7 +105,7 @@ async function getFullAgentState() {
     const getClass = (el) => (el?.getAttribute ? el.getAttribute('class') : '') || '';
 
     const panel = document.querySelector('.antigravity-agent-side-panel');
-    if (!panel) return { isRunning: false, turnCount: 0, thinking: [], toolCalls: [], responses: [], notifications: [], error: null, fileChanges: [], lastTurnResponseHTML: '' };
+    if (!panel) return { isRunning: false, turnCount: 0, stepGroupCount: 0, thinking: [], toolCalls: [], responses: [], notifications: [], error: null, fileChanges: [], lastTurnResponseHTML: '' };
 
     // ── 1. Running state (multi-signal) ──
     let isRunning = false;
@@ -143,8 +143,11 @@ async function getFullAgentState() {
     // Signal C: Any tool call with no exit code and a cancel button (still executing)
     // (checked after tool calls are scraped below)
 
-    // ── 2. Turn structure ──
-    // Each conversation turn is a direct child of .mx-auto.w-full inside the scroll area
+    // ── 2. Turn & Step Group structure ──
+    // Conversation: #conversation > overflow-y-auto > .mx-auto (turn list)
+    // Each turn child contains a contentDiv (.relative.flex.flex-col.gap-y-3.px-4)
+    // Inside contentDiv: multiple step group children (some virtualized as bg-gray-500/10 skeletons)
+    // The LAST step group child is the active one with real content
     const conversation = panel.querySelector('#conversation') || document.querySelector('#conversation');
     const scrollArea = conversation?.querySelector('.overflow-y-auto');
     const msgList = scrollArea?.querySelector('.mx-auto');
@@ -152,10 +155,28 @@ async function getFullAgentState() {
     const turnCount = allTurns.length;
     const lastTurn = allTurns.length > 0 ? allTurns[allTurns.length - 1] : null;
 
-    // Scope our scraping to the last turn only to avoid reading old responses
-    const scopeEl = lastTurn || panel;
+    // Navigate into the content div inside the last turn
+    const contentDiv = lastTurn?.querySelector('.relative.flex.flex-col.gap-y-3') || lastTurn;
+    const stepGroups = contentDiv ? Array.from(contentDiv.children) : [];
+    const stepGroupCount = stepGroups.length;
 
-    // ── 3. Thinking blocks (scoped to last turn) ──
+    // Find the last NON-virtualized step group (has actual content, not just skeleton placeholders)
+    let activeStepGroup = null;
+    for (let i = stepGroups.length - 1; i >= 0; i--) {
+      const child = stepGroups[i];
+      // Virtualized groups only contain .rounded-lg.bg-gray-500/10 children
+      const isVirtualized = child.children.length > 0 &&
+        Array.from(child.children).every(c => getClass(c).includes('bg-gray-500/10'));
+      if (!isVirtualized) {
+        activeStepGroup = child;
+        break;
+      }
+    }
+
+    // Scope scraping: prefer activeStepGroup, fall back to lastTurn, then panel  
+    const scopeEl = activeStepGroup || lastTurn || panel;
+
+    // ── 3. Thinking blocks (scoped) ──
     const thinking = [];
     const thinkingBtns = Array.from(scopeEl.querySelectorAll('button')).filter(b =>
       b.textContent?.trim().startsWith('Thought for')
@@ -164,8 +185,9 @@ async function getFullAgentState() {
       thinking.push({ time: btn.textContent.trim() });
     }
 
-    // ── 4. Tool call steps (scoped to last turn) ──
+    // ── 4. Tool call steps (scoped to active step group) ──
     const toolCalls = [];
+    // Primary selector: command/file tool containers 
     const toolContainers = scopeEl.querySelectorAll('.flex.flex-col.gap-2.border.rounded-lg.my-1');
     for (const container of toolContainers) {
       const header = container.querySelector('.mb-1.px-2.py-1.text-sm');
@@ -175,32 +197,36 @@ async function getFullAgentState() {
       const pathSpan = container.querySelector('span.font-mono.text-sm');
       const filePath = pathSpan?.textContent?.trim() || '';
 
+      // Extract command from PRE element (format: "CWD $ command args")
       let command = '';
-      const allSpans = container.querySelectorAll('span');
-      let foundDollar = false;
-      for (const s of allSpans) {
-        if (foundDollar) {
-          const t = s.textContent?.trim();
-          if (t && !t.startsWith('Ask every time') && !t.startsWith('Exit code')) {
-            command = t;
-            break;
-          }
+      const pre = container.querySelector('pre.whitespace-pre-wrap');
+      if (pre) {
+        const preText = pre.textContent?.trim() || '';
+        const dollarIdx = preText.indexOf('$');
+        if (dollarIdx !== -1) {
+          command = preText.substring(dollarIdx + 1).trim();
         }
-        if (s.textContent?.trim() === '$') foundDollar = true;
       }
 
+      // Extract exit code from footer or spans
       let exitCode = null;
-      for (const s of allSpans) {
-        const t = s.textContent?.trim() || '';
+      const allEls = container.querySelectorAll('span, div');
+      for (const el of allEls) {
+        const t = el.textContent?.trim() || '';
         if (t.startsWith('Exit code')) {
           exitCode = t;
           break;
         }
       }
 
-      const hasCancelBtn = !!container.querySelector('button') &&
-        Array.from(container.querySelectorAll('button')).some(b => b.textContent?.trim() === 'Cancel');
+      // Detect Cancel button and collect footer buttons for HITL state
+      const allBtns = Array.from(container.querySelectorAll('button'));
+      const hasCancelBtn = allBtns.some(b => b.textContent?.trim() === 'Cancel');
+      const footerButtons = allBtns
+        .map(b => b.textContent?.trim())
+        .filter(t => t && t !== 'Open' && !t.startsWith('Thought'));
 
+      // Determine tool type from status text
       let type = 'unknown';
       const sl = status.toLowerCase();
       if (sl.includes('command')) type = 'command';
@@ -219,6 +245,7 @@ async function getFullAgentState() {
       toolCalls.push({
         status, type, path: filePath,
         command: command || null, exitCode, hasCancelBtn,
+        footerButtons,
         hasTerminal: !!terminal, terminalOutput: terminalOutput || null,
       });
     }
@@ -298,7 +325,7 @@ async function getFullAgentState() {
     }
 
     return {
-      isRunning, turnCount, thinking, toolCalls, responses,
+      isRunning, turnCount, stepGroupCount, thinking, toolCalls, responses,
       notifications, error, fileChanges, lastTurnResponseHTML
     };
   }, SELECTORS.spinner);
@@ -849,7 +876,8 @@ function startServer() {
                   currState.responses.length !== prevState.responses.length ||
                   currState.thinking.length !== prevState.thinking.length ||
                   currState.notifications.length !== prevState.notifications.length ||
-                  currState.fileChanges.length !== prevState.fileChanges.length
+                  currState.fileChanges.length !== prevState.fileChanges.length ||
+                  currState.stepGroupCount !== prevState.stepGroupCount
                 );
 
                 if (contentChanged) {
