@@ -232,8 +232,13 @@ async function getFullAgentState() {
       const terminal = container.querySelector('.component-shared-terminal');
       let terminalOutput = '';
       if (terminal) {
-        const rows = terminal.querySelector('.xterm-rows');
+        // Try multiple selectors for terminal content (xterm updates DOM structure)
+        const rows = terminal.querySelector('.xterm-rows')
+          || terminal.querySelector('.xterm-screen')
+          || terminal.querySelector('[class*="xterm"]');
         if (rows) terminalOutput = rows.textContent?.substring(0, 500) || '';
+        // Fallback: get terminal's own text content
+        if (!terminalOutput) terminalOutput = terminal.textContent?.substring(0, 500) || '';
       }
 
       toolCalls.push({
@@ -581,6 +586,7 @@ function diffStates(prev, curr) {
   // New or updated tool calls
   if (curr.toolCalls.length > prev.toolCalls.length) {
     for (let i = prev.toolCalls.length; i < curr.toolCalls.length; i++) {
+      console.log(`[diffStates] NEW tool_call at index ${i}: id=${curr.toolCalls[i]?.id}, status=${curr.toolCalls[i]?.status}`);
       events.push({ type: 'tool_call', data: { ...curr.toolCalls[i], index: i, isNew: true } });
     }
   }
@@ -590,6 +596,7 @@ function diffStates(prev, curr) {
     const p = prev.toolCalls[i];
     const c = curr.toolCalls[i];
     if (p.status !== c.status || p.exitCode !== c.exitCode || p.hasCancelBtn !== c.hasCancelBtn) {
+      console.log(`[diffStates] UPDATED tool_call at index ${i}: status ${p.status}->${c.status}, exitCode ${p.exitCode}->${c.exitCode}`);
       events.push({ type: 'tool_call', data: { ...c, index: i, isNew: false } });
     }
   }
@@ -730,6 +737,50 @@ function startServer() {
       return;
     }
 
+    // ── Debug: DOM diagnostic ──
+    if (url.pathname === '/api/debug/dom' && req.method === 'GET') {
+      try {
+        if (!workbenchPage) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Not connected' }));
+          return;
+        }
+        const debug = await workbenchPage.evaluate(() => {
+          const panel = document.querySelector('.antigravity-agent-side-panel');
+          if (!panel) return { error: 'No panel' };
+          const conv = panel.querySelector('#conversation');
+          const scrollArea = conv?.querySelector('.overflow-y-auto');
+          const msgList = scrollArea?.querySelector('.mx-auto');
+          const turns = msgList ? msgList.children.length : 0;
+          const lastTurn = msgList?.lastElementChild;
+          const contentDiv = lastTurn?.querySelector('.relative.flex.flex-col.gap-y-3') || lastTurn;
+          const toolEls = panel.querySelectorAll('.flex.flex-col.gap-2.border.rounded-lg.my-1');
+          const responseEls = panel.querySelectorAll('.leading-relaxed.select-text');
+          return {
+            panelTextLen: panel.textContent?.length || 0,
+            hasConversation: !!conv,
+            hasScrollArea: !!scrollArea,
+            hasMsgList: !!msgList,
+            turnCount: turns,
+            hasContentDiv: !!contentDiv,
+            stepGroupCount: contentDiv?.children?.length || 0,
+            toolContainerCount: toolEls.length,
+            toolContainers: Array.from(toolEls).map(el => ({
+              cls: (el.className || '').substring(0, 200),
+              text: (el.textContent || '').substring(0, 80),
+            })),
+            responseBlockCount: responseEls.length,
+          };
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(debug, null, 2));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
+
     // ── HITL: Approve ──
     if (url.pathname === '/api/chat/approve' && req.method === 'POST') {
       try {
@@ -843,7 +894,16 @@ function startServer() {
               const currState = await getFullAgentState();
 
               // Track tools by ID to prevent virtualization from shrinking the array
-              if (currState.turnCount > prevState.turnCount) sessionToolCalls.clear();
+              if (currState.turnCount > prevState.turnCount) {
+                sessionToolCalls.clear();
+                // CRITICAL: Reset prev state's tool calls so diffStates sees new tools as NEW,
+                // not as updates to old tools from the previous turn
+                prevState.toolCalls = [];
+                prevState.responses = [];
+                prevState.thinking = [];
+                prevState.notifications = [];
+                prevState.fileChanges = [];
+              }
               for (const t of currState.toolCalls) {
                 sessionToolCalls.set(t.id, t);
               }
@@ -864,7 +924,13 @@ function startServer() {
 
               // Compute and emit diffs
               const events = diffStates(prevState, currState);
+              if (currState.toolCalls.length > 0 || prevState.toolCalls.length > 0) {
+                console.log(`[SSE Debug] toolCalls: prev=${prevState.toolCalls.length}, curr=${currState.toolCalls.length}, events=${events.filter(e => e.type === 'tool_call').length}`);
+              }
               for (const evt of events) {
+                if (evt.type === 'tool_call') {
+                  console.log(`[SSE Debug] Emitting tool_call event:`, JSON.stringify({ index: evt.data.index, isNew: evt.data.isNew, status: evt.data.status, id: evt.data.id }));
+                }
                 writeEvent(evt.type, evt.data);
               }
 

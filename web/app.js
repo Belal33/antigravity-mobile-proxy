@@ -130,6 +130,7 @@
                     if (trimmed.startsWith('data: ') && currentEvent) {
                         try {
                             const data = JSON.parse(trimmed.substring(6));
+                            console.log(`[SSE] Event: ${currentEvent}`, currentEvent === 'tool_call' ? data : '');
                             handleSSEvent(currentEvent, data, {
                                 stepsContainer,
                                 responseContainer,
@@ -139,7 +140,9 @@
                                 setFullResponse: (text) => { fullResponse = text; },
                                 getFullResponse: () => fullResponse,
                             });
-                        } catch { }
+                        } catch (parseErr) {
+                            console.error(`[SSE] Failed to parse ${currentEvent} event:`, parseErr.message, '| Raw:', trimmed.substring(0, 200));
+                        }
                         currentEvent = null;
                     }
                 }
