@@ -160,21 +160,8 @@ async function getFullAgentState() {
     const stepGroups = contentDiv ? Array.from(contentDiv.children) : [];
     const stepGroupCount = stepGroups.length;
 
-    // Find the last NON-virtualized step group (has actual content, not just skeleton placeholders)
-    let activeStepGroup = null;
-    for (let i = stepGroups.length - 1; i >= 0; i--) {
-      const child = stepGroups[i];
-      // Virtualized groups only contain .rounded-lg.bg-gray-500/10 children
-      const isVirtualized = child.children.length > 0 &&
-        Array.from(child.children).every(c => getClass(c).includes('bg-gray-500/10'));
-      if (!isVirtualized) {
-        activeStepGroup = child;
-        break;
-      }
-    }
-
-    // Scope scraping: prefer activeStepGroup, fall back to lastTurn, then panel  
-    const scopeEl = activeStepGroup || lastTurn || panel;
+    // Scope scraping: use lastTurn so we capture all currently rendered tools in any step group
+    const scopeEl = lastTurn || panel;
 
     // ── 3. Thinking blocks (scoped) ──
     const thinking = [];
@@ -189,7 +176,14 @@ async function getFullAgentState() {
     const toolCalls = [];
     // Primary selector: command/file tool containers 
     const toolContainers = scopeEl.querySelectorAll('.flex.flex-col.gap-2.border.rounded-lg.my-1');
+    let toolCounter = window.__proxyToolCounter || 0;
+
     for (const container of toolContainers) {
+      if (!container.dataset.proxyToolId) {
+        container.dataset.proxyToolId = String(toolCounter++);
+      }
+      const proxyToolId = container.dataset.proxyToolId;
+
       const header = container.querySelector('.mb-1.px-2.py-1.text-sm');
       const statusSpan = header?.querySelector('span.opacity-60');
       const status = statusSpan?.textContent?.trim() || '';
@@ -243,12 +237,14 @@ async function getFullAgentState() {
       }
 
       toolCalls.push({
+        id: proxyToolId,
         status, type, path: filePath,
         command: command || null, exitCode, hasCancelBtn,
         footerButtons,
         hasTerminal: !!terminal, terminalOutput: terminalOutput || null,
       });
     }
+    window.__proxyToolCounter = toolCounter;
 
     // Signal C from above: any tool still executing = agent still running
     if (!isRunning && toolCalls.some(t => t.hasCancelBtn && !t.exitCode)) {
@@ -830,6 +826,8 @@ function startServer() {
 
           // Capture initial state before sending
           let prevState = await getFullAgentState();
+          let sessionToolCalls = new Map();
+
           await sendMessage(message);
 
           writeEvent('status', { isRunning: true, phase: 'waiting' });
@@ -843,6 +841,14 @@ function startServer() {
           const interval = setInterval(async () => {
             try {
               const currState = await getFullAgentState();
+
+              // Track tools by ID to prevent virtualization from shrinking the array
+              if (currState.turnCount > prevState.turnCount) sessionToolCalls.clear();
+              for (const t of currState.toolCalls) {
+                sessionToolCalls.set(t.id, t);
+              }
+              // Restore full accumulated tool list
+              currState.toolCalls = Array.from(sessionToolCalls.values());
 
               // Detect start via multiple signals
               if (!started) {

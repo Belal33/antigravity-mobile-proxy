@@ -109,6 +109,7 @@
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
+            let currentEvent = null;  // persists across chunk boundaries
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -117,8 +118,6 @@
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n');
                 buffer = lines.pop() || '';
-
-                let currentEvent = null;
 
                 for (const line of lines) {
                     const trimmed = line.trim();
