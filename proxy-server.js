@@ -351,6 +351,41 @@ async function getFullAgentState() {
         else if (sl.includes('read') || sl.includes('view') || sl.includes('analyz')) type = 'read';
         else if (sl.startsWith('mcp')) type = 'mcp';
 
+        // Capture footer/permission buttons:
+        // The permission dialog (e.g. "Allow directory access?") is often rendered
+        // as a sibling to the container that holds the file rows, not the row itself.
+        // We walk up 5 levels and look for buttons that have "Allow" or "Deny" in their text.
+        const SKIP_BTNS = new Set(['open', 'show details', 'show', 'hide', 'copy', 'close']);
+
+        let allRowBtns = Array.from(row.querySelectorAll('button'));
+
+        let el = row.parentElement;
+        let depth = 0;
+        let foundPermBtns = [];
+        while (el && depth < 5) {
+          const siblingBtns = Array.from(el.querySelectorAll('button'));
+          for (const btn of siblingBtns) {
+            const t = (btn.textContent || '').trim().toLowerCase();
+            if ((t.includes('allow') || t.includes('deny') || t === 'cancel') && !foundPermBtns.includes(btn)) {
+              foundPermBtns.push(btn);
+            }
+          }
+          if (foundPermBtns.length > 0 && foundPermBtns.length < 5) {
+            // Got the permission buttons from the ancestor wrapper, merge them
+            allRowBtns = [...allRowBtns, ...foundPermBtns];
+            break;
+          }
+          el = el.parentElement;
+          depth++;
+        }
+
+        // Remove duplicates and filter
+        allRowBtns = [...new Set(allRowBtns)];
+        const footerButtons = allRowBtns
+          .map(b => b.textContent?.trim())
+          .filter(t => t && !SKIP_BTNS.has(t.toLowerCase()) && !t.startsWith('Thought'));
+        const hasCancelBtn = footerButtons.some(t => t.toLowerCase() === 'cancel');
+
         toolCalls.push({
           id: proxyToolId,
           status: statusText,
@@ -358,8 +393,8 @@ async function getFullAgentState() {
           path: fileName,
           command: null,
           exitCode: null,
-          hasCancelBtn: false,
-          footerButtons: [],
+          hasCancelBtn,
+          footerButtons,
           hasTerminal: false,
           terminalOutput: null,
           // File tool specific
@@ -376,6 +411,72 @@ async function getFullAgentState() {
       }
     }
     window.__proxyToolCounter = toolCounter;
+
+    // ── 4c. Permission dialogs (panel-wide scan) ──
+    // Permission prompts like "Allow directory access to X?" with Deny/Allow buttons
+    // can live outside the scopeEl used by fileToolRows. Scan the entire panel.
+    try {
+      const allPanelRows = panel.querySelectorAll('.flex.flex-col.space-y-2 > .flex.flex-row:not(.my-2)');
+      for (const permRow of allPanelRows) {
+        const permBtns = Array.from(permRow.querySelectorAll('button'));
+        const permBtnTexts = permBtns.map(b => b.textContent?.trim()).filter(Boolean);
+        const hasPermButtons = permBtnTexts.some(t =>
+          /^(allow|deny|allow once|allow this conversation)$/i.test(t)
+        );
+
+        if (!hasPermButtons) continue;
+
+        // Check if already captured by the fileToolRows loop
+        const alreadyCaptured = permRow.dataset?.proxyToolId &&
+          toolCalls.some(tc => tc.id === permRow.dataset.proxyToolId && tc.footerButtons.length > 0);
+        if (alreadyCaptured) continue;
+
+        const PERM_SKIP = new Set(['open', 'show details', 'show', 'hide', 'copy', 'close']);
+        const actionButtons = permBtnTexts.filter(t =>
+          !PERM_SKIP.has(t.toLowerCase()) && !t.startsWith('Thought')
+        );
+        if (actionButtons.length === 0) continue;
+
+        // Try to attach to the last "Analyzed" / "Read" tool call
+        const lastAnalyzed = [...toolCalls].reverse().find(tc =>
+          /^(Analyzed|Read|Viewed)/i.test(tc.status)
+        );
+
+        if (lastAnalyzed && lastAnalyzed.footerButtons.length === 0) {
+          lastAnalyzed.footerButtons = actionButtons;
+          lastAnalyzed.hasCancelBtn = actionButtons.some(t => t.toLowerCase() === 'deny' || t.toLowerCase() === 'cancel');
+        } else {
+          // Create a new tool call for the permission dialog
+          if (!permRow.dataset.proxyToolId) {
+            permRow.dataset.proxyToolId = String(window.__proxyToolCounter++);
+          }
+          const permText = permRow.textContent || '';
+          const pathMatch = permText.match(/access to\s+(.+?)(?:\?|$)/i);
+          const permPath = pathMatch ? pathMatch[1].trim() : '';
+
+          toolCalls.push({
+            id: permRow.dataset.proxyToolId,
+            status: 'Permission Required',
+            type: 'read',
+            path: permPath,
+            command: null,
+            exitCode: null,
+            hasCancelBtn: true,
+            footerButtons: actionButtons,
+            hasTerminal: false,
+            terminalOutput: null,
+            additions: null,
+            deletions: null,
+            lineRange: null,
+            mcpToolName: null,
+            mcpArgs: null,
+            mcpOutput: null,
+          });
+        }
+      }
+    } catch (e) {
+      // Silent skip for resilience
+    }
 
     // Signal C from above: any tool still executing = agent still running
     if (!isRunning && toolCalls.some(t => t.hasCancelBtn && !t.exitCode)) {
@@ -787,8 +888,9 @@ function diffStates(prev, curr) {
   for (let i = 0; i < sharedLen; i++) {
     const p = prev.toolCalls[i];
     const c = curr.toolCalls[i];
-    if (p.status !== c.status || p.exitCode !== c.exitCode || p.hasCancelBtn !== c.hasCancelBtn) {
-      console.log(`[diffStates] UPDATED tool_call at index ${i}: status ${p.status}->${c.status}, exitCode ${p.exitCode}->${c.exitCode}`);
+    const footerChanged = JSON.stringify(p.footerButtons) !== JSON.stringify(c.footerButtons);
+    if (p.status !== c.status || p.exitCode !== c.exitCode || p.hasCancelBtn !== c.hasCancelBtn || footerChanged) {
+      console.log(`[diffStates] UPDATED tool_call at index ${i}: status ${p.status}->${c.status}, exitCode ${p.exitCode}->${c.exitCode}, footerChanged=${footerChanged}`);
       events.push({ type: 'tool_call', data: { ...c, index: i, isNew: false } });
     }
   }
