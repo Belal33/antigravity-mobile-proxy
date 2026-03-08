@@ -29,6 +29,7 @@ const CDP_PORT = parseInt(process.env.CDP_PORT || '9223', 10);
 const HTTP_PORT = 3457;
 
 let workbenchPage = null;
+let lastActionTimestamp = 0; // Timestamp of last HITL action click (approve/reject/action)
 let browser = null;
 let allWorkbenches = [];
 let activeWindowIdx = 0;
@@ -1084,6 +1085,7 @@ function startServer() {
           return;
         }
         const result = await clickApproveButton();
+        lastActionTimestamp = Date.now();
         res.writeHead(result.success ? 200 : 404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(result));
       } catch (e) {
@@ -1102,6 +1104,7 @@ function startServer() {
           return;
         }
         const result = await clickRejectButton();
+        lastActionTimestamp = Date.now();
         res.writeHead(result.success ? 200 : 404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(result));
       } catch (e) {
@@ -1155,6 +1158,7 @@ function startServer() {
 
           res.writeHead(result.success ? 200 : 404, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(result));
+          lastActionTimestamp = Date.now();
         } catch (e) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: e.message }));
@@ -1329,6 +1333,10 @@ function startServer() {
 
                 if (contentChanged) {
                   // New content still appearing — not done yet
+                  doneCount = 0;
+                  lastStableHTML = '';
+                } else if (Date.now() - lastActionTimestamp < 15000) {
+                  // Grace period after HITL action click — agent is likely resuming
                   doneCount = 0;
                   lastStableHTML = '';
                 } else {
