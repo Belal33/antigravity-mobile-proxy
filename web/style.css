@@ -818,7 +818,65 @@ body {
   line-height: 1.4;
 }
 
+/* ============ Tool Card Footer Actions (HITL inline buttons) ============ */
+
+.tool-footer-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+}
+
+.tool-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.tool-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.tool-action-btn.approve {
+  background: var(--hitl-approve-bg, rgba(52, 211, 153, 0.12));
+  border-color: var(--hitl-approve-border, rgba(52, 211, 153, 0.3));
+  color: var(--success);
+}
+
+.tool-action-btn.approve:not(:disabled):hover {
+  background: rgba(52, 211, 153, 0.22);
+  border-color: rgba(52, 211, 153, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(52, 211, 153, 0.15);
+}
+
+.tool-action-btn.reject {
+  background: var(--hitl-reject-bg, rgba(239, 68, 68, 0.1));
+  border-color: var(--hitl-reject-border, rgba(239, 68, 68, 0.25));
+  color: var(--error);
+}
+
+.tool-action-btn.reject:not(:disabled):hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(239, 68, 68, 0.12);
+}
+
 /* ============ HITL Dialog ============ */
+
 
 .hitl-dialog {
   padding: 14px 16px;

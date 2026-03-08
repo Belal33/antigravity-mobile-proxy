@@ -339,6 +339,17 @@
         const icon = getToolIcon(data.type);
         const cancelHtml = data.hasCancelBtn ? '<span class="tool-pending-badge">Running</span>' : '';
 
+        // HITL footer buttons
+        const footerButtonsHtml = (data.footerButtons && data.footerButtons.length > 0)
+            ? `<div class="tool-footer-actions">` +
+            data.footerButtons.map(btnText => {
+                const isApprove = /^(run|approve|allow|yes|accept|continue|save|confirm)/i.test(btnText);
+                const cls = isApprove ? 'tool-action-btn approve' : 'tool-action-btn reject';
+                return `<button class="${cls}" data-action-btn="${escapeHtml(btnText)}">${escapeHtml(btnText)}</button>`;
+            }).join('') +
+            `</div>`
+            : '';
+
         // === Command tools (terminal) ===
         const commandHtml = data.command
             ? `<div class="tool-command"><code><span class="tool-dollar">$</span> ${escapeHtml(data.command)}</code></div>`
@@ -385,7 +396,30 @@
   ${commandHtml}
   ${terminalHtml}
   ${mcpDetailsHtml}
+  ${footerButtonsHtml}
 `;
+        // Attach action button event listeners
+        div.querySelectorAll('[data-action-btn]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const origText = btn.textContent;
+                btn.disabled = true;
+                btn.textContent = '...';
+                try {
+                    const resp = await fetch(`${API_BASE}/api/chat/action`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ toolId: data.id, buttonText: origText })
+                    });
+                    const result = await resp.json();
+                    if (!result.success) console.error('Action failed:', result.error);
+                } catch (e) {
+                    console.error('Action request failed:', e);
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = origText;
+                }
+            });
+        });
         return div;
     }
 
@@ -433,6 +467,45 @@
         if (!data.hasCancelBtn) {
             const badge = el.querySelector('.tool-pending-badge');
             if (badge) badge.remove();
+        }
+
+        // Add or remove footer action buttons
+        const existingFooter = el.querySelector('.tool-footer-actions');
+        if (data.footerButtons && data.footerButtons.length > 0) {
+            if (!existingFooter) {
+                const footerDiv = document.createElement('div');
+                footerDiv.className = 'tool-footer-actions';
+                data.footerButtons.forEach(btnText => {
+                    const isApprove = /^(run|approve|allow|yes|accept|continue|save|confirm)/i.test(btnText);
+                    const btn = document.createElement('button');
+                    btn.className = `tool-action-btn ${isApprove ? 'approve' : 'reject'}`;
+                    btn.setAttribute('data-action-btn', btnText);
+                    btn.textContent = btnText;
+                    btn.addEventListener('click', async () => {
+                        const origText = btn.textContent;
+                        btn.disabled = true;
+                        btn.textContent = '...';
+                        try {
+                            const resp = await fetch(`${API_BASE}/api/chat/action`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ toolId: data.id, buttonText: origText })
+                            });
+                            const result = await resp.json();
+                            if (!result.success) console.error('Action failed:', result.error);
+                        } catch (e) {
+                            console.error('Action request failed:', e);
+                        } finally {
+                            btn.disabled = false;
+                            btn.textContent = origText;
+                        }
+                    });
+                    footerDiv.appendChild(btn);
+                });
+                el.appendChild(footerDiv);
+            }
+        } else if (existingFooter) {
+            existingFooter.remove();
         }
 
         // Add terminal output if it appeared

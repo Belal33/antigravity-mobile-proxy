@@ -382,6 +382,70 @@ async function getFullAgentState() {
       isRunning = true;
     }
 
+    // Signal D: Active task boundary / subagent execution
+    // When the agent uses browser_subagent or task_boundary, the UI shows
+    // a step group with active status but no spinner/cancel at the panel level.
+    if (!isRunning) {
+      const lastStepGroup = stepGroups[stepGroups.length - 1];
+      if (lastStepGroup) {
+        // 1. Check for the specific inline spinners used inside step groups
+        // e.g. <div class="h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-transparent"></div>
+        // but only if they are visible (opacity-0 and invisible mean they are hidden)
+        const spinners = lastStepGroup.querySelectorAll('.animate-spin');
+        for (const spinner of spinners) {
+          // Skip the main panel spinner if it somehow ended up here
+          if (spinner.classList.contains('w-4') && spinner.classList.contains('h-4')) continue;
+
+          let el = spinner;
+          let hidden = false;
+          while (el && el !== lastStepGroup) {
+            const cls = getClass(el);
+            if (cls.includes('invisible') || cls.includes('opacity-0') || cls.includes('hidden')) {
+              hidden = true; break;
+            }
+            el = el.parentElement;
+          }
+          if (!hidden) {
+            isRunning = true;
+            break;
+          }
+        }
+
+        // 2. Check for active indicators like animate-pulse on checkboxes
+        if (!isRunning) {
+          const indicators = lastStepGroup.querySelectorAll('.animate-pulse, .in-progress-checkbox, .typing-indicator');
+          for (const ind of indicators) {
+            let el = ind;
+            let hidden = false;
+            while (el && el !== lastStepGroup) {
+              const cls = getClass(el);
+              if (cls.includes('invisible') || cls.includes('opacity-0') || cls.includes('hidden')) {
+                hidden = true; break;
+              }
+              el = el.parentElement;
+            }
+            if (!hidden) { isRunning = true; break; }
+          }
+        }
+
+        // 3. Fallback: Check for status text indicating active work,
+        // but ensure it's in a current active sub-block, not a finished one.
+        if (!isRunning) {
+          const statusTexts = lastStepGroup.querySelectorAll('[class*="text-sm"][class*="opacity"]');
+          for (const st of statusTexts) {
+            // Only consider opacity changing elements if they aren't hidden
+            if (getClass(st).includes('invisible')) continue;
+            const txt = (st.textContent || '').toLowerCase();
+            if (txt.includes('running') || txt.includes('progress') || txt.includes('navigat') ||
+              txt.includes('executing') || txt.includes('analyzing') || txt.includes('processing') ||
+              txt.includes('subagent') || txt.includes('browser')) {
+              isRunning = true; break;
+            }
+          }
+        }
+      }
+    }
+
     // ── 5. Notify user containers (scoped to last turn) ──
     const notifications = [];
     const notifyBlocks = scopeEl.querySelectorAll('.notify-user-container');
@@ -945,6 +1009,58 @@ function startServer() {
       return;
     }
 
+    // ── HITL: Generic Tool Action (click any footer button by toolId + buttonText) ──
+    if (url.pathname === '/api/chat/action' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', async () => {
+        try {
+          if (!workbenchPage) {
+            res.writeHead(503, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Not connected' }));
+            return;
+          }
+          const { toolId, buttonText } = JSON.parse(body);
+          if (!buttonText) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'buttonText is required' }));
+            return;
+          }
+
+          const result = await workbenchPage.evaluate((toolId, buttonText) => {
+            const panel = document.querySelector('.antigravity-agent-side-panel');
+            if (!panel) return { success: false, error: 'No panel found' };
+
+            // Scope to the specific tool container if toolId provided
+            let searchRoot = panel;
+            if (toolId) {
+              const scoped = panel.querySelector(`[data-proxy-tool-id="${toolId}"]`);
+              if (scoped) searchRoot = scoped;
+            }
+
+            const buttons = Array.from(searchRoot.querySelectorAll('button'));
+            const target = buttons.find(b => {
+              const t = b.textContent?.trim() || '';
+              return t.toLowerCase() === buttonText.toLowerCase() && !b.disabled;
+            });
+
+            if (target) {
+              target.click();
+              return { success: true, clicked: target.textContent?.trim() };
+            }
+            return { success: false, error: `Button "${buttonText}" not found` };
+          }, toolId, buttonText);
+
+          res.writeHead(result.success ? 200 : 404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+        } catch (e) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+      });
+      return;
+    }
+
     // ── Send chat (blocking) ──
     if (url.pathname === '/api/chat' && req.method === 'POST') {
       let body = '';
@@ -1006,6 +1122,7 @@ function startServer() {
           // Capture initial state before sending
           let prevState = await getFullAgentState();
           let sessionToolCalls = new Map();
+          let sessionResponses = [];  // Accumulated responses across virtualizations
 
           await sendMessage(message);
 
@@ -1038,6 +1155,20 @@ function startServer() {
               // Restore full accumulated tool list
               currState.toolCalls = Array.from(sessionToolCalls.values());
 
+              // Accumulate responses: survive DOM virtualization
+              if (currState.responses.length > sessionResponses.length) {
+                // New response(s) appeared — capture all
+                sessionResponses = [...currState.responses];
+              } else if (currState.responses.length < sessionResponses.length && currState.responses.length > 0) {
+                // DOM virtualized away earlier responses — keep accumulated, update last
+                const lastIdx = currState.responses.length - 1;
+                sessionResponses[sessionResponses.length - 1] = currState.responses[lastIdx];
+              } else if (currState.responses.length === sessionResponses.length && currState.responses.length > 0) {
+                // Same count — update last (streaming)
+                sessionResponses[sessionResponses.length - 1] = currState.responses[currState.responses.length - 1];
+              }
+              currState.responses = [...sessionResponses];
+
               // Detect start via multiple signals
               if (!started) {
                 if (currState.isRunning ||
@@ -1049,6 +1180,14 @@ function startServer() {
                   writeEvent('status', { isRunning: true, phase: 'processing' });
                 }
               }
+
+              // Check for unresolved tools in the SESSION (meaning the tool was started but never finished,
+              // even if the DOM virtualized it or briefly unmounted the UI row)
+              const hasUnresolvedTools = Array.from(sessionToolCalls.values()).some(t => {
+                // A tool might be considered unresolved if it doesn't have an exit code
+                // and its type is something that takes time (like command or browser)
+                return t.hasCancelBtn && !t.exitCode;
+              });
 
               // Compute and emit diffs
               const events = diffStates(prevState, currState);
@@ -1069,7 +1208,8 @@ function startServer() {
               // 4. Must be stable for 10 consecutive checks (5 seconds)
               // 5. Response HTML must be identical for 3 consecutive done checks (content stabilized)
               // 6. No new content has appeared (tool calls, responses, thinking)
-              if (started && !currState.isRunning && !currState.error) {
+              // 7. No unresolved tools in session cache
+              if (started && !currState.isRunning && !currState.error && !hasUnresolvedTools) {
                 // Check if any new content appeared — if so, agent might be between steps
                 const contentChanged = (
                   currState.toolCalls.length !== prevState.toolCalls.length ||
@@ -1077,7 +1217,12 @@ function startServer() {
                   currState.thinking.length !== prevState.thinking.length ||
                   currState.notifications.length !== prevState.notifications.length ||
                   currState.fileChanges.length !== prevState.fileChanges.length ||
-                  currState.stepGroupCount !== prevState.stepGroupCount
+                  currState.stepGroupCount !== prevState.stepGroupCount ||
+                  // Check if last response content changed (streaming within same block)
+                  (currState.responses.length > 0 && prevState.responses.length > 0 &&
+                    currState.responses[currState.responses.length - 1] !== prevState.responses[prevState.responses.length - 1]) ||
+                  // Check raw HTML change (catches any DOM update)
+                  currState.lastTurnResponseHTML !== prevState.lastTurnResponseHTML
                 );
 
                 if (contentChanged) {
@@ -1095,7 +1240,13 @@ function startServer() {
                 }
                 lastStableHTML = currentHTML;
 
-                if (doneCount >= 10) {
+                // Require longer stabilization for subagent-heavy sessions
+                const hasSubagentTools = currState.toolCalls.some(t =>
+                  t.type === 'browser' || (t.status || '').toLowerCase().includes('subagent') ||
+                  (t.status || '').toLowerCase().includes('navigat')
+                );
+                const requiredDoneCount = hasSubagentTools ? 20 : 10; // 10s vs 5s
+                if (doneCount >= requiredDoneCount) {
                   // Confirmed done — read from current turn's responses (HTML)
                   const finalResponse = currState.notifications.length > 0
                     ? currState.notifications[currState.notifications.length - 1]
@@ -1211,6 +1362,7 @@ function startServer() {
     console.log(`  GET  /api/chat/state     → Get current agent panel state`);
     console.log(`  POST /api/chat/approve   → Click approve/run button (HITL)`);
     console.log(`  POST /api/chat/reject    → Click cancel/reject button (HITL)`);
+    console.log(`  POST /api/chat/action    → Click any footer button by toolId + buttonText (HITL)`);
     console.log(`  GET  /api/windows        → List workbench windows`);
     console.log(`  POST /api/windows/select → Switch target window`);
     console.log(`  GET  /api/health         → Health check`);
