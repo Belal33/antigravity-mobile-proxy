@@ -14,6 +14,9 @@ A CDP-based HTTP proxy that lets you interact with the **Antigravity IDE agent**
 ## Prerequisites
 
 1. **Antigravity IDE** — Must be launched with CDP enabled:
+
+   **Linux / macOS:**
+
    ```bash
    # Kill ALL existing instances first (Electron reuses processes)
    killall antigravity
@@ -22,11 +25,22 @@ A CDP-based HTTP proxy that lets you interact with the **Antigravity IDE agent**
    /usr/share/antigravity/antigravity --remote-debugging-port=9223 /path/to/project
    ```
 
+   **Windows (PowerShell):**
+
+   ```powershell
+   # Kill ALL existing instances first (Electron reuses processes)
+   Get-Process antigravity -ErrorAction SilentlyContinue | Stop-Process -Force
+
+   # Launch Antigravity with CDP enabled
+   Start-Process "$env:LOCALAPPDATA\Programs\Antigravity\Antigravity.exe" -ArgumentList "--remote-debugging-port=9223", "C:\path\to\project"
+   ```
+
    > ⚠️ Using `antigravity . --remote-debugging-port=9223` (the CLI wrapper) will **NOT** work — it passes flags to Node.js, not Electron.
 
 2. **Node.js** — v18+
 
 3. **Dependencies**:
+
    ```bash
    npm install
    ```
@@ -91,6 +105,7 @@ curl -X POST http://localhost:3457/api/windows/select \
 ```
 
 The proxy:
+
 1. Connects to Antigravity via CDP using `puppeteer-core`
 2. Types messages into the agent's chat input
 3. Polls the DOM for the agent's response (filtering out "thinking" blocks)
@@ -100,11 +115,11 @@ The proxy:
 
 | Issue | Cause | Fix |
 |-------|-------|-----|
-| `Failed to fetch browser webSocket URL` | CDP not enabled or wrong port | Kill all Antigravity instances, relaunch with `/usr/share/antigravity/antigravity --remote-debugging-port=9223 .` |
+| `Failed to fetch browser webSocket URL` | CDP not enabled or wrong port | Kill all Antigravity instances, relaunch with the correct command (see Prerequisites) |
 | `No workbench pages found` | Connected to wrong process (e.g. Chrome browser) | Verify CDP_PORT points to Antigravity, not Chrome |
 | Proxy hangs on "Thinking..." | Spinner detection issue | Already fixed — uses Tailwind `invisible` class check |
 | Empty response | Agent used `notify_user` or thinking blocks only | Already fixed — checks both `.gap-y-3` blocks and `.notify-user-container` |
-| `Port 3457 is already in use` | Previous proxy instance running | `kill $(lsof -t -i:3457)` |
+| `Port 3457 is already in use` | Previous proxy instance running | **Linux/macOS:** `kill $(lsof -t -i:3457)` · **Windows (PowerShell):** `Get-Process -Id (Get-NetTCPConnection -LocalPort 3457).OwningProcess \| Stop-Process -Force` |
 
 ## License
 
