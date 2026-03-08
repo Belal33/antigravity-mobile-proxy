@@ -696,6 +696,77 @@ body {
   background: rgba(239, 68, 68, 0.1);
 }
 
+.tool-additions {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  color: #34d399;
+  white-space: nowrap;
+}
+
+.tool-deletions {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  color: #ef4444;
+  white-space: nowrap;
+}
+
+.tool-line-range {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* MCP Tool Details */
+.tool-mcp-section {
+  margin-top: 8px;
+}
+
+.tool-mcp-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.tool-mcp-code,
+.tool-mcp-output {
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.tool-mcp-code pre,
+.tool-mcp-output pre {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.tool-mcp-output {
+  max-height: 150px;
+}
+
+.tool-call-card.mcp {
+  border-color: rgba(168, 85, 247, 0.25);
+  background: rgba(168, 85, 247, 0.06);
+}
+
+.tool-call-card.mcp .tool-icon {
+  color: var(--accent-secondary);
+}
+
 .tool-pending-badge {
   font-size: 10px;
   font-weight: 600;

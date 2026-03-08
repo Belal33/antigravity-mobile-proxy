@@ -337,31 +337,55 @@
         div.setAttribute('data-tool-index', data.index);
 
         const icon = getToolIcon(data.type);
+        const cancelHtml = data.hasCancelBtn ? '<span class="tool-pending-badge">Running</span>' : '';
+
+        // === Command tools (terminal) ===
         const commandHtml = data.command
             ? `<div class="tool-command"><code><span class="tool-dollar">$</span> ${escapeHtml(data.command)}</code></div>`
             : '';
-        const pathHtml = data.path ? `<span class="tool-path">${escapeHtml(data.path)}</span>` : '';
-        const exitHtml = data.exitCode ? `<span class="tool-exit ${data.exitCode.includes('0') && !data.exitCode.includes('10') ? 'success' : 'error'}">${escapeHtml(data.exitCode)}</span>` : '';
-        const cancelHtml = data.hasCancelBtn ? '<span class="tool-pending-badge">Running</span>' : '';
         const terminalHtml = data.terminalOutput
             ? `<div class="tool-terminal-output"><pre>${escapeHtml(data.terminalOutput)}</pre></div>`
             : '';
+        const exitHtml = data.exitCode
+            ? `<span class="tool-exit ${data.exitCode.includes('0') && !data.exitCode.includes('10') ? 'success' : 'error'}">${escapeHtml(data.exitCode)}</span>`
+            : '';
+
+        // === File tools (Edited, Created, etc.) ===
+        const pathHtml = data.path ? `<span class="tool-path">${escapeHtml(data.path)}</span>` : '';
+        const additionsHtml = data.additions ? `<span class="tool-additions">${escapeHtml(data.additions)}</span>` : '';
+        const deletionsHtml = data.deletions ? `<span class="tool-deletions">${escapeHtml(data.deletions)}</span>` : '';
+        const lineRangeHtml = data.lineRange ? `<span class="tool-line-range">${escapeHtml(data.lineRange)}</span>` : '';
+
+        // === MCP tools ===
+        let mcpDetailsHtml = '';
+        if (data.type === 'mcp') {
+            if (data.mcpArgs) {
+                mcpDetailsHtml += `<div class="tool-mcp-section"><span class="tool-mcp-label">Arguments</span><div class="tool-mcp-code"><pre>${escapeHtml(data.mcpArgs)}</pre></div></div>`;
+            }
+            if (data.mcpOutput) {
+                mcpDetailsHtml += `<div class="tool-mcp-section"><span class="tool-mcp-label">Output</span><div class="tool-mcp-output"><pre>${escapeHtml(data.mcpOutput)}</pre></div></div>`;
+            }
+        }
 
         div.innerHTML = `
-      <div class="tool-card-header">
-        <div class="tool-card-left">
-          ${icon}
-          <span class="tool-status-text">${escapeHtml(data.status)}</span>
-          ${cancelHtml}
-        </div>
-        <div class="tool-card-right">
-          ${pathHtml}
-          ${exitHtml}
-        </div>
-      </div>
-      ${commandHtml}
-      ${terminalHtml}
-    `;
+  <div class="tool-card-header">
+    <div class="tool-card-left">
+      ${icon}
+      <span class="tool-status-text">${escapeHtml(data.status)}</span>
+      ${cancelHtml}
+    </div>
+    <div class="tool-card-right">
+      ${pathHtml}
+      ${additionsHtml}
+      ${deletionsHtml}
+      ${lineRangeHtml}
+      ${exitHtml}
+    </div>
+  </div>
+  ${commandHtml}
+  ${terminalHtml}
+  ${mcpDetailsHtml}
+`;
         return div;
     }
 
@@ -389,6 +413,22 @@
             rightDiv.appendChild(exitSpan);
         }
 
+        // Update additions/deletions
+        if (rightDiv) {
+            if (data.additions && !el.querySelector('.tool-additions')) {
+                const addSpan = document.createElement('span');
+                addSpan.className = 'tool-additions';
+                addSpan.textContent = data.additions;
+                rightDiv.appendChild(addSpan);
+            }
+            if (data.deletions && !el.querySelector('.tool-deletions')) {
+                const delSpan = document.createElement('span');
+                delSpan.className = 'tool-deletions';
+                delSpan.textContent = data.deletions;
+                rightDiv.appendChild(delSpan);
+            }
+        }
+
         // Remove pending badge if cancel is gone
         if (!data.hasCancelBtn) {
             const badge = el.querySelector('.tool-pending-badge');
@@ -401,6 +441,22 @@
             termDiv.className = 'tool-terminal-output';
             termDiv.innerHTML = `<pre>${escapeHtml(data.terminalOutput)}</pre>`;
             el.appendChild(termDiv);
+        }
+
+        // Add MCP details if they appeared
+        if (data.type === 'mcp' && !el.querySelector('.tool-mcp-section')) {
+            if (data.mcpArgs) {
+                const argsDiv = document.createElement('div');
+                argsDiv.className = 'tool-mcp-section';
+                argsDiv.innerHTML = `<span class="tool-mcp-label">Arguments</span><div class="tool-mcp-code"><pre>${escapeHtml(data.mcpArgs)}</pre></div>`;
+                el.appendChild(argsDiv);
+            }
+            if (data.mcpOutput) {
+                const outputDiv = document.createElement('div');
+                outputDiv.className = 'tool-mcp-section';
+                outputDiv.innerHTML = `<span class="tool-mcp-label">Output</span><div class="tool-mcp-output"><pre>${escapeHtml(data.mcpOutput)}</pre></div>`;
+                el.appendChild(outputDiv);
+            }
         }
     }
 
@@ -585,6 +641,7 @@
             search: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
             read: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
             browser: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+            mcp: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6M12 22v-6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M22 12h-6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24"/><circle cx="12" cy="12" r="4"/></svg>',
             unknown: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>',
         };
         return `<span class="tool-icon">${icons[type] || icons.unknown}</span>`;
@@ -593,8 +650,9 @@
     function getToolStatusClass(status) {
         const s = (status || '').toLowerCase();
         if (s.startsWith('running') || s.startsWith('editing') || s.startsWith('creating') || s.startsWith('search')) return 'running';
-        if (s.startsWith('ran') || s.startsWith('edited') || s.startsWith('created') || s.startsWith('read') || s.startsWith('viewed')) return 'done';
+        if (s.startsWith('ran') || s.startsWith('edited') || s.startsWith('created') || s.startsWith('read') || s.startsWith('viewed') || s.startsWith('analyzed') || s.startsWith('wrote') || s.startsWith('replaced') || s.startsWith('deleted')) return 'done';
         if (s.includes('error') || s.includes('fail')) return 'error';
+        if (s.startsWith('mcp')) return 'mcp';
         return 'running';
     }
 

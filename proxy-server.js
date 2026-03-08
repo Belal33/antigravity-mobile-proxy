@@ -251,6 +251,132 @@ async function getFullAgentState() {
     }
     window.__proxyToolCounter = toolCounter;
 
+    // ── 4b. Inline file-system tools (Edited, Created, Analyzed, Read, etc.) ──
+    // These are NOT bordered containers — they live inside .flex.flex-col.space-y-2
+    // Unlike bordered tools, these have NO specific wrapping element class.
+    // Status text may be in a div, a text node, or span.opacity-70 (MCP tools).
+    const fileToolRows = scopeEl.querySelectorAll('.flex.flex-col.space-y-2 > .flex.flex-row:not(.my-2)');
+    const statusPattern = /^(Edited|Created|Analyzed|Read|Viewed|Wrote|Replaced|Searching|Deleted|Moved|Renamed|MCP Tool)/i;
+    for (const row of fileToolRows) {
+      try {
+        const rowText = row.textContent?.trim() || '';
+        const match = rowText.match(statusPattern);
+        if (!match) continue;
+        const statusText = match[1];
+
+        if (!row.dataset.proxyToolId) {
+          row.dataset.proxyToolId = String(toolCounter++);
+        }
+        const proxyToolId = row.dataset.proxyToolId;
+
+        const allSpans = Array.from(row.querySelectorAll('span'));
+        let fileName = '';
+        let additions = null;
+        let deletions = null;
+        let lineRange = null;
+        let mcpArgs = null;
+        let mcpOutput = null;
+        let mcpToolName = null;
+
+        if (statusText.startsWith('MCP')) {
+          // === MCP Tool extraction ===
+          // Tool name: direct text of the flex-row div at depth 6
+          const nameDiv = row.querySelector('.flex.flex-row.items-center.gap-1.overflow-hidden');
+          if (nameDiv) {
+            // Get direct text nodes only (exclude "MCP Tool:" and "Show Details" spans)
+            const directTexts = [];
+            for (const child of nameDiv.childNodes) {
+              if (child.nodeType === 3) directTexts.push(child.textContent.trim());
+            }
+            mcpToolName = directTexts.join('').trim() || null;
+          }
+          if (!mcpToolName) {
+            // Fallback: colon parsing
+            const colonIdx = rowText.indexOf(':');
+            if (colonIdx > -1) {
+              const afterColon = rowText.substring(colonIdx + 1).trim();
+              const cutoff = afterColon.search(/\n|Show|Ran/);
+              mcpToolName = cutoff > -1 ? afterColon.substring(0, cutoff).trim() : afterColon.substring(0, 60).trim();
+            }
+          }
+          fileName = mcpToolName || '';
+
+          // Arguments: extract from mtk-tokenized spans (Monaco JSON editor)
+          const argSpans = allSpans.filter(s => (s.className || '').startsWith('mtk'));
+          if (argSpans.length > 0) {
+            mcpArgs = argSpans.map(s => s.textContent).join('').trim();
+            if (mcpArgs.length > 500) mcpArgs = mcpArgs.substring(0, 500) + '…';
+          }
+
+          // Output: look for "Output" label and get sibling content
+          const outputLabel = allSpans.find(s => s.textContent?.trim() === 'Output');
+          if (outputLabel) {
+            // Get the parent of "Output" label and extract its text after "Output"
+            const outputParent = outputLabel.closest('.flex.flex-col') || outputLabel.parentElement;
+            if (outputParent) {
+              const fullText = outputParent.textContent || '';
+              const outputIdx = fullText.indexOf('Output');
+              if (outputIdx > -1) {
+                mcpOutput = fullText.substring(outputIdx + 6).trim();
+                if (mcpOutput.length > 500) mcpOutput = mcpOutput.substring(0, 500) + '…';
+              }
+            }
+          }
+        } else {
+          // === File tool extraction ===
+          // File name: from the inline-flex badge span
+          const fileSpan = allSpans.find(s => {
+            const cls = s.className || '';
+            return cls.includes('inline-flex') && cls.includes('items-center');
+          });
+          fileName = fileSpan?.textContent?.trim() || '';
+
+          // Additions: span.text-green-600 (e.g. "+1")
+          const addSpan = allSpans.find(s => (s.className || '').includes('text-green'));
+          additions = addSpan?.textContent?.trim() || null;
+
+          // Deletions: span.text-red-600 (e.g. "-2")
+          const delSpan = allSpans.find(s => (s.className || '').includes('text-red'));
+          deletions = delSpan?.textContent?.trim() || null;
+
+          // Line range: e.g. "#L1-40"
+          const lineSpan = allSpans.find(s => /^#L\d/.test(s.textContent?.trim()));
+          lineRange = lineSpan?.textContent?.trim() || null;
+        }
+
+        // Determine type
+        let type = 'file';
+        const sl = statusText.toLowerCase();
+        if (sl.includes('search') || sl.includes('grep')) type = 'search';
+        else if (sl.includes('read') || sl.includes('view') || sl.includes('analyz')) type = 'read';
+        else if (sl.startsWith('mcp')) type = 'mcp';
+
+        toolCalls.push({
+          id: proxyToolId,
+          status: statusText,
+          type,
+          path: fileName,
+          command: null,
+          exitCode: null,
+          hasCancelBtn: false,
+          footerButtons: [],
+          hasTerminal: false,
+          terminalOutput: null,
+          // File tool specific
+          additions,
+          deletions,
+          lineRange,
+          // MCP tool specific
+          mcpToolName,
+          mcpArgs,
+          mcpOutput,
+        });
+      } catch (err) {
+        // Silent skip on error for resilience
+      }
+    }
+    window.__proxyToolCounter = toolCounter;
+
     // Signal C from above: any tool still executing = agent still running
     if (!isRunning && toolCalls.some(t => t.hasCancelBtn && !t.exitCode)) {
       isRunning = true;
@@ -271,9 +397,11 @@ async function getFullAgentState() {
     const responses = [];
     let lastTurnResponseHTML = '';
     const textBlocks = Array.from(scopeEl.querySelectorAll('.leading-relaxed.select-text'));
-    const finalBlocks = textBlocks.filter(el =>
-      el.parentElement && getClass(el.parentElement).includes('gap-y-3')
-    );
+    const finalBlocks = textBlocks.filter(el => {
+      const parentCls = getClass(el.parentElement);
+      // Accept response blocks inside gap-y-3 (old structure) OR space-y-2 (file tool step groups)
+      return el.parentElement && (parentCls.includes('gap-y-3') || parentCls.includes('space-y-2'));
+    });
     for (const block of finalBlocks) {
       const clone = block.cloneNode(true);
       clone.querySelectorAll('style, script').forEach(el => el.remove());
