@@ -79,6 +79,7 @@ function createMockCtx(overrides = {}) {
         browser: { isConnected: jest.fn().mockReturnValue(true), pages: jest.fn().mockResolvedValue([]) },
         allWorkbenches: [],
         activeWindowIdx: 0,
+        activeConversationId: null,
         lastActionTimestamp: 0,
         ...overrides,
     };

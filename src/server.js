@@ -7,6 +7,7 @@ const http = require('http');
 
 const { handleHealth } = require('./routes/health');
 const { handleArtifacts } = require('./routes/artifacts');
+const { handleConversations } = require('./routes/conversations');
 const { handleWindows } = require('./routes/windows');
 const { handleChat } = require('./routes/chat');
 const { handleHITL } = require('./routes/hitl');
@@ -31,6 +32,7 @@ function startServer(ctx) {
 
         // Route dispatch — order matters (most specific first)
         if (handleHealth(req, res, url, ctx)) return;
+        if (await handleConversations(req, res, url, ctx)) return;
         if (await handleArtifacts(req, res, url, ctx)) return;
         if (await handleWindows(req, res, url, ctx)) return;
         if (await handleHITL(req, res, url, ctx)) return;
@@ -57,6 +59,10 @@ function startServer(ctx) {
         console.log(`  POST /api/chat/approve   → Click approve/run button (HITL)`);
         console.log(`  POST /api/chat/reject    → Click cancel/reject button (HITL)`);
         console.log(`  POST /api/chat/action    → Click any footer button by toolId + buttonText (HITL)`);
+        console.log(`  POST /api/chat/new       → Start new chat in IDE`);
+        console.log(`  GET  /api/conversations        → List conversations`);
+        console.log(`  POST /api/conversations/select → Set active conversation`);
+        console.log(`  GET  /api/conversations/active → Get active conversation`);
         console.log(`  GET  /api/windows        → List workbench windows`);
         console.log(`  POST /api/windows/select → Switch target window`);
         console.log(`  GET  /api/health         → Health check`);

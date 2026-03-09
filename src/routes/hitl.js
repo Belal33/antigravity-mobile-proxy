@@ -5,10 +5,29 @@
  *   POST /api/chat/action   — click any footer button by toolId + buttonText
  */
 
-const { clickApproveButton, clickRejectButton } = require('../actions');
+const { clickApproveButton, clickRejectButton, startNewChat } = require('../actions');
 
 async function handleHITL(req, res, url, ctx) {
     if (req.method !== 'POST') return false;
+
+    // POST /api/chat/new — start a new chat in the IDE
+    if (url.pathname === '/api/chat/new') {
+        try {
+            if (!ctx.workbenchPage) {
+                res.writeHead(503, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Not connected' }));
+                return true;
+            }
+            const result = await startNewChat(ctx);
+            ctx.lastActionTimestamp = Date.now();
+            res.writeHead(result.success ? 200 : 404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(result));
+        } catch (e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: e.message }));
+        }
+        return true;
+    }
 
     // POST /api/chat/approve
     if (url.pathname === '/api/chat/approve') {

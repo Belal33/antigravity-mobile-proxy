@@ -8,7 +8,7 @@
 (function (App) {
     'use strict';
 
-    const { dom, state } = App;
+    const { dom, state, API_BASE } = App;
 
     // ============ Input Event Listeners ============
 
@@ -29,9 +29,24 @@
         if (!state.isStreaming && dom.inputEl.value.trim()) App.sendMessage(dom.inputEl.value);
     });
 
-    dom.newChatBtn.addEventListener('click', () => {
+    dom.newChatBtn.addEventListener('click', async () => {
         if (state.currentController) state.currentController.abort();
         App.clearHistory();
+        // Trigger new chat in the IDE via CDP
+        try {
+            const res = await fetch(`${API_BASE}/api/chat/new`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            const data = await res.json();
+            if (data.success) {
+                App.setStatus('connected', 'New Chat');
+            } else {
+                console.warn('New chat in IDE:', data.error || 'unknown error');
+            }
+        } catch (e) {
+            console.error('Failed to start new chat in IDE:', e);
+        }
     });
 
     document.querySelectorAll('.quick-prompt').forEach(btn => {

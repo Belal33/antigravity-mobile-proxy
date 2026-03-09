@@ -29,6 +29,7 @@ const ctx = {
   browser: null,
   allWorkbenches: [],
   activeWindowIdx: 0,
+  activeConversationId: null,
   lastActionTimestamp: 0,
 };
 

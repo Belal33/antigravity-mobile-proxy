@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="css/markdown.css">
   <link rel="stylesheet" href="css/input.css">
   <link rel="stylesheet" href="css/artifacts.css">
+  <link rel="stylesheet" href="css/conversation-selector.css">
   <link rel="stylesheet" href="css/responsive.css">
   <link rel="stylesheet" href="css/utilities.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -95,6 +96,23 @@
     <div id="artifact-panel" class="artifact-panel hidden">
       <div class="artifact-panel-header">
         <h3>📁 Artifacts</h3>
+        <!-- Conversation Selector Dropdown -->
+        <div class="conv-selector-wrapper" id="conv-selector-wrapper">
+          <button id="conv-selector-btn" class="conv-selector-btn" title="Select conversation">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+            <span id="conv-selector-label">Conversation</span>
+            <svg class="chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2.5">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          <div class="conv-dropdown" id="conv-dropdown">
+            <div class="conv-dropdown-header">Conversations</div>
+            <div id="conv-dropdown-list" class="conv-dropdown-list"></div>
+          </div>
+        </div>
         <button id="artifact-close-btn" class="icon-btn" title="Close">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18" />
@@ -175,6 +193,7 @@
   <script src="js/api.js"></script>
   <script src="js/chat-history.js"></script>
   <script src="js/window-selector.js"></script>
+  <script src="js/conversation-selector.js"></script>
   <script src="js/artifacts.js"></script>
   <script src="js/app.js"></script>
 </body>

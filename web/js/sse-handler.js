@@ -11,7 +11,7 @@
     App.handleSSEvent = function (eventType, data, ctx) {
         switch (eventType) {
             case 'thinking': {
-                const thinkEl = App.createThinkingBlock(data.text);
+                const thinkEl = App.createThinkingBlock(data.time);
                 ctx.stepsContainer.appendChild(thinkEl);
                 App.scrollToBottom();
                 break;
@@ -58,7 +58,7 @@
             }
 
             case 'status':
-                App.setStatus(data.state || 'streaming', data.text || '');
+                App.setStatus(data.phase || 'streaming', data.isRunning ? 'Agent working...' : '');
                 break;
 
             case 'response':

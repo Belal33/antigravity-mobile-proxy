@@ -50,6 +50,7 @@ window.App = window.App || {};
         isStreaming: false,
         messages: [],
         currentController: null,
+        activeConversationId: null,
     };
 
 })(window.App);

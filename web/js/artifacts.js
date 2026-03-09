@@ -55,6 +55,21 @@
         });
     }
 
+    // ============ Public API for Conversation Selector ============
+
+    /**
+     * Programmatically show a conversation's files by ID.
+     * Called from conversation-selector.js when a conversation is selected.
+     */
+    App.showArtifactFilesById = function (convId, title, files) {
+        const conv = {
+            id: convId,
+            files: files || [],
+            title: title,
+        };
+        showArtifactFiles(conv);
+    };
+
     // ============ Data Loading ============
 
     async function loadArtifacts() {
