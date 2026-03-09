@@ -4,6 +4,10 @@
  */
 
 const { SELECTORS } = require('./selectors');
+const fs = require('fs');
+const path = require('path');
+
+const DEBUG_FILE = path.join('/tmp', 'proxy-debug-state.json');
 
 /**
  * Get a comprehensive snapshot of the entire agent panel state.
@@ -12,7 +16,7 @@ const { SELECTORS } = require('./selectors');
  *           notifications[], error, fileChanges[], lastTurnResponseHTML }
  */
 async function getFullAgentState(ctx) {
-    return ctx.workbenchPage.evaluate((spinnerSel) => {
+    const state = await ctx.workbenchPage.evaluate((spinnerSel) => {
         const getClass = (el) => (el?.getAttribute ? el.getAttribute('class') : '') || '';
 
         const panel = document.querySelector('.antigravity-agent-side-panel');
@@ -500,6 +504,28 @@ async function getFullAgentState(ctx) {
             notifications, error, fileChanges, lastTurnResponseHTML
         };
     }, SELECTORS.spinner);
+
+    // Write debug state to file for inspection
+    try {
+        const debug = {
+            timestamp: new Date().toISOString(),
+            isRunning: state.isRunning,
+            turnCount: state.turnCount,
+            toolCallsCount: state.toolCalls.length,
+            responsesCount: state.responses.length,
+            rawLastTurnResponseHTML: state.lastTurnResponseHTML,
+            extractedResponses: state.responses,
+            toolCalls: state.toolCalls,
+            thinking: state.thinking,
+            notifications: state.notifications,
+            error: state.error,
+        };
+        fs.writeFileSync(DEBUG_FILE, JSON.stringify(debug, null, 2));
+    } catch (e) {
+        // Silent — debug file writing should never break scraping
+    }
+
+    return state;
 }
 
 module.exports = { getFullAgentState };

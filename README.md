@@ -63,10 +63,14 @@ Open `http://localhost:3457` in your browser for the web UI.
 |--------|----------|-------------|
 | `POST` | `/api/chat` | Send message, get full response (JSON) |
 | `POST` | `/api/chat/stream` | Send message, receive SSE stream |
-| `GET` | `/api/windows` | List all Antigravity workbench windows |
+| `GET`  | `/api/chat/state` | Get current agent panel state |
+| `POST` | `/api/chat/approve` | Click approve/run button (HITL) |
+| `POST` | `/api/chat/reject` | Click cancel/reject button (HITL) |
+| `POST` | `/api/chat/action` | Click any footer button by text (HITL) |
+| `GET`  | `/api/windows` | List all Antigravity workbench windows |
 | `POST` | `/api/windows/select` | Switch target window: `{"index": 1}` |
-| `GET` | `/api/health` | Health check |
-| `GET` | `/` | Web chat UI |
+| `GET`  | `/api/health` | Health check |
+| `GET`  | `/` | Web chat UI |
 
 ### Examples
 
@@ -110,6 +114,73 @@ The proxy:
 2. Types messages into the agent's chat input
 3. Polls the DOM for the agent's response (filtering out "thinking" blocks)
 4. Returns the final response via HTTP
+
+## Project Structure
+
+```
+proxy-server.js              ← Entry point (~40 lines)
+src/
+├── cdp.js                   ← CDP connection & window management
+├── selectors.js             ← DOM selector constants
+├── scraper.js               ← Full agent state scraper (DOM → JSON)
+├── legacy.js                ← Legacy blocking response helpers
+├── actions.js               ← sendMessage, clickApprove/Reject
+├── diff.js                  ← SSE state diffing engine
+├── utils.js                 ← sleep() utility
+├── server.js                ← HTTP server & route dispatch
+└── routes/
+    ├── health.js            ├── artifacts.js
+    ├── windows.js           ├── chat.js
+    ├── hitl.js              └── static.js
+tests/
+├── helpers/mock-http.js     ← Reusable mock req/res/ctx factories
+├── utils.test.js            ├── selectors.test.js
+├── diff.test.js             ├── cdp.test.js
+├── scraper.test.js          ├── actions.test.js
+├── legacy.test.js
+└── routes/
+    ├── health.test.js       ├── artifacts.test.js
+    ├── windows.test.js      ├── chat.test.js
+    ├── hitl.test.js         └── static.test.js
+web/
+├── index.html               ← Web chat UI
+├── style.css
+└── js/
+    ├── app.js               ├── api.js
+    ├── sse-handler.js       ├── config.js
+    ├── helpers.js           ├── artifacts.js
+    ├── chat-history.js      ├── window-selector.js
+    └── components/          ← UI components (tool cards, HITL, etc.)
+```
+
+## Testing
+
+```bash
+# Run all tests (112 tests, 13 suites, <1s)
+npm test
+
+# Watch mode
+npm run test:watch
+```
+
+Tests cover:
+- **Unit tests**: `utils`, `selectors`, `diff` (23 edge cases)
+- **Mocked tests**: `cdp`, `scraper`, `actions`, `legacy` (mocked puppeteer/page)
+- **Route tests**: All 6 route handlers with mock HTTP objects
+
+## Debugging
+
+The scraper writes the latest state to **`/tmp/proxy-debug-state.json`** on every poll. Inspect it with:
+
+```bash
+cat /tmp/proxy-debug-state.json | python3 -m json.tool
+```
+
+Contents:
+- `rawLastTurnResponseHTML` — Raw HTML from the agent's last turn
+- `extractedResponses` — Parsed response blocks
+- `toolCalls` — All detected tool calls with status, type, buttons
+- `thinking`, `notifications`, `error`, `isRunning`, `turnCount`
 
 ## Troubleshooting
 
