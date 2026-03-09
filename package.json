@@ -55,6 +55,8 @@
         "vscode:prepublish": "npm run compile",
         "compile": "tsc -p ./",
         "watch": "tsc -watch -p ./",
+        "test": "jest --verbose",
+        "test:watch": "jest --watch",
         "package": "npx -y @vscode/vsce package --no-dependencies --allow-missing-repository"
     },
     "dependencies": {
@@ -64,6 +66,7 @@
     "devDependencies": {
         "@types/node": "^20.0.0",
         "@types/vscode": "^1.95.0",
+        "jest": "^30.2.0",
         "typescript": "^5.5.0"
     }
 }
