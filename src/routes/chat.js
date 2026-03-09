@@ -132,7 +132,7 @@ async function handleChat(req, res, url, ctx) {
                     });
 
                     const writeEvent = (type, data) => {
-                        res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+                        res.write(`data: ${JSON.stringify({ ...data, type })}\n\n`);
                     };
 
                     writeEvent('status', { isRunning: true, phase: 'sending' });
@@ -200,15 +200,10 @@ async function handleChat(req, res, url, ctx) {
 
                             // Compute and emit diffs
                             const events = diffStates(prevState, currState);
-                            if (currState.toolCalls.length > 0 || prevState.toolCalls.length > 0) {
-                                console.log(`[SSE Debug] toolCalls: prev=${prevState.toolCalls.length}, curr=${currState.toolCalls.length}, events=${events.filter(e => e.type === 'tool_call').length}`);
-                            }
                             for (const evt of events) {
-                                if (evt.type === 'tool_call') {
-                                    console.log(`[SSE Debug] Emitting tool_call event:`, JSON.stringify({ index: evt.data.index, isNew: evt.data.isNew, status: evt.data.status, id: evt.data.id }));
-                                }
                                 writeEvent(evt.type, evt.data);
                             }
+
 
                             // Check for completion
                             if (started && !currState.isRunning && !currState.error && !hasUnresolvedTools) {

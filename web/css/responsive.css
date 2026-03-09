@@ -1,0 +1,45 @@
+/* ============ Responsive ============ */
+
+@media (max-width: 640px) {
+    #app {
+        max-width: 100%;
+    }
+
+    .quick-prompts {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 0 16px;
+    }
+
+    .quick-prompt {
+        text-align: left;
+    }
+
+    #welcome-screen h2 {
+        font-size: 20px;
+    }
+
+    #welcome-screen p {
+        font-size: 13px;
+        padding: 0 8px;
+    }
+
+    .message-content,
+    .agent-response {
+        padding: 12px 14px;
+        font-size: 13.5px;
+    }
+
+    .tool-path {
+        max-width: 120px;
+    }
+
+    .hitl-actions {
+        flex-direction: column;
+    }
+
+    .hitl-approve-btn,
+    .hitl-reject-btn {
+        justify-content: center;
+    }
+}

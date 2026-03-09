@@ -6,7 +6,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Antigravity Agent</title>
   <meta name="description" content="Chat with the Antigravity AI Agent from any browser">
-  <link rel="stylesheet" href="style.css">
+  <!-- Modular CSS (order: tokens → reset → layout → components → features → utilities) -->
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/animations.css">
+  <link rel="stylesheet" href="css/reset.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/window-selector.css">
+  <link rel="stylesheet" href="css/messages.css">
+  <link rel="stylesheet" href="css/agent-steps.css">
+  <link rel="stylesheet" href="css/markdown.css">
+  <link rel="stylesheet" href="css/input.css">
+  <link rel="stylesheet" href="css/artifacts.css">
+  <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/utilities.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -151,7 +163,20 @@
     </footer>
   </div>
 
-  <script src="app.js"></script>
+  <!-- Modular JS (order: config → helpers → components → features → entry) -->
+  <script src="js/config.js"></script>
+  <script src="js/helpers.js"></script>
+  <script src="js/components/agent-message.js"></script>
+  <script src="js/components/thinking.js"></script>
+  <script src="js/components/tool-card.js"></script>
+  <script src="js/components/hitl.js"></script>
+  <script src="js/components/message.js"></script>
+  <script src="js/sse-handler.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/chat-history.js"></script>
+  <script src="js/window-selector.js"></script>
+  <script src="js/artifacts.js"></script>
+  <script src="js/app.js"></script>
 </body>
 
 </html>
