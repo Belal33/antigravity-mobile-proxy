@@ -563,10 +563,22 @@ async function getFullAgentState() {
     const responses = [];
     let lastTurnResponseHTML = '';
     const textBlocks = Array.from(scopeEl.querySelectorAll('.leading-relaxed.select-text'));
+    // Filter: exclude blocks inside collapsed sections (max-h-0 ancestor means hidden)
+    // and blocks that are empty or just CSS style content
     const finalBlocks = textBlocks.filter(el => {
-      const parentCls = getClass(el.parentElement);
-      // Accept response blocks inside gap-y-3 (old structure) OR space-y-2 (file tool step groups)
-      return el.parentElement && (parentCls.includes('gap-y-3') || parentCls.includes('space-y-2'));
+      // Check if any ancestor has max-h-0 (collapsed/hidden)
+      let ancestor = el.parentElement;
+      let depth = 0;
+      while (ancestor && ancestor !== scopeEl && depth < 10) {
+        const cls = getClass(ancestor);
+        if (cls.includes('max-h-0')) return false;
+        ancestor = ancestor.parentElement;
+        depth++;
+      }
+      // Skip empty blocks
+      const text = el.textContent?.trim() || '';
+      if (!text) return false;
+      return true;
     });
     for (const block of finalBlocks) {
       const clone = block.cloneNode(true);
@@ -643,9 +655,19 @@ async function getAgentResponseText() {
     }
 
     const textBlocks = Array.from(panel.querySelectorAll('.leading-relaxed.select-text'));
-    const finalBlocks = textBlocks.filter(el =>
-      el.parentElement && getClass(el.parentElement).includes('gap-y-3')
-    );
+    const finalBlocks = textBlocks.filter(el => {
+      // Exclude blocks inside collapsed sections
+      let ancestor = el.parentElement;
+      let depth = 0;
+      while (ancestor && depth < 10) {
+        const cls = getClass(ancestor);
+        if (cls.includes('max-h-0')) return false;
+        ancestor = ancestor.parentElement;
+        depth++;
+      }
+      const text = el.textContent?.trim() || '';
+      return !!text;
+    });
 
     if (finalBlocks.length === 0) return '';
     const lastBlock = finalBlocks[finalBlocks.length - 1];
@@ -662,7 +684,17 @@ async function getResponseBlockCount() {
     if (!panel) return 0;
     const notifyCount = panel.querySelectorAll('.notify-user-container').length;
     const mdBlocks = Array.from(panel.querySelectorAll('.leading-relaxed.select-text'))
-      .filter(el => el.parentElement && getClass(el.parentElement).includes('gap-y-3'));
+      .filter(el => {
+        let ancestor = el.parentElement;
+        let depth = 0;
+        while (ancestor && depth < 10) {
+          const cls = (ancestor.getAttribute ? ancestor.getAttribute('class') : '') || '';
+          if (cls.includes('max-h-0')) return false;
+          ancestor = ancestor.parentElement;
+          depth++;
+        }
+        return !!(el.textContent?.trim());
+      });
     return notifyCount + mdBlocks.length;
   });
 }
