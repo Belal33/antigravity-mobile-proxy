@@ -10,64 +10,141 @@ const path = require('path');
 const DEBUG_FILE = path.join('/tmp', 'proxy-debug-state.json');
 
 /**
- * Get simple chat history for the UI (all turns, user and agent).
+ * Get chat history for the UI (all user/agent messages).
+ * 
+ * The Antigravity IDE groups the entire conversation under a single "turn"
+ * container, with step groups inside. Older step groups may be virtualized
+ * (replaced with skeleton placeholders). To extract the full history:
+ * 
+ * 1. Find the scroll container and scroll to top to force-render older content.
+ * 2. Walk the DOM tree to find user messages and agent response blocks in order.
+ * 3. Scroll incrementally to de-virtualize all content.
+ * 
  * Returns: { isRunning, turnCount, turns: [{ role, content }] }
  */
 async function getChatHistory(ctx) {
-    return await ctx.workbenchPage.evaluate(() => {
+    return await ctx.workbenchPage.evaluate(async () => {
         const panel = document.querySelector('.antigravity-agent-side-panel');
         if (!panel) return { isRunning: false, turnCount: 0, turns: [] };
 
         const conversation = panel.querySelector('#conversation') || document.querySelector('#conversation');
         const scrollArea = conversation?.querySelector('.overflow-y-auto');
-        const msgList = scrollArea?.querySelector('.mx-auto');
+        if (!scrollArea) return { isRunning: false, turnCount: 0, turns: [] };
 
-        if (!msgList || !msgList.children) {
-            return { isRunning: false, turnCount: 0, turns: [] };
+        // Step 1: Scroll to top to force older content to render
+        scrollArea.scrollTop = 0;
+        await new Promise(r => setTimeout(r, 300));
+
+        // Step 2: Incrementally scroll down to de-virtualize all content
+        const scrollHeight = scrollArea.scrollHeight;
+        const viewportHeight = scrollArea.clientHeight;
+        const scrollStep = viewportHeight * 0.8;
+        let pos = 0;
+        while (pos < scrollHeight) {
+            scrollArea.scrollTop = pos;
+            await new Promise(r => setTimeout(r, 100));
+            pos += scrollStep;
         }
+        // Scroll to bottom to ensure last content is rendered
+        scrollArea.scrollTop = scrollArea.scrollHeight;
+        await new Promise(r => setTimeout(r, 200));
+
+        // Step 3: Now walk the entire DOM tree to find messages in document order
+        // User messages: elements with class 'whitespace-pre-wrap' that are inside
+        //   a user message container (not inside an agent response block)
+        // Agent responses: elements with class 'leading-relaxed select-text'
 
         const turns = [];
-        const allTurns = Array.from(msgList.children);
+        const seen = new Set(); // Avoid duplicates
 
-        for (const turnEl of allTurns) {
-            // Determine role: agent turns have the distinctive relative flex col gap-y-3 struct
-            const isAgent = !!turnEl.querySelector('.relative.flex.flex-col.gap-y-3');
+        // Strategy: find all user message elements and all agent response elements,
+        // then sort them by their position in the document.
 
-            if (isAgent) {
-                // For agent turns, extract the final response block(s)
-                const textBlocks = Array.from(turnEl.querySelectorAll('.leading-relaxed.select-text'));
-                const finalBlocks = textBlocks.filter(el => {
-                    let ancestor = el.parentElement;
-                    let depth = 0;
-                    while (ancestor && ancestor !== turnEl && depth < 10) {
-                        const cls = ancestor.getAttribute('class') || '';
-                        if (cls.includes('max-h-0')) return false;
-                        ancestor = ancestor.parentElement;
-                        depth++;
-                    }
-                    return !!el.textContent?.trim();
-                });
+        const msgList = scrollArea.querySelector('.mx-auto') || scrollArea;
 
-                if (finalBlocks.length > 0) {
-                    const block = finalBlocks[finalBlocks.length - 1];
-                    const clone = block.cloneNode(true);
-                    clone.querySelectorAll('style, script').forEach(el => el.remove());
-                    const html = clone.innerHTML?.trim();
-                    if (html) turns.push({ role: 'agent', content: html });
+        // Collect candidate nodes with their DOM position
+        const candidates = [];
+
+        // Find user messages - they're inside a specific container structure
+        // User messages have a parent with specific flex layout
+        const allWhitespace = msgList.querySelectorAll('.whitespace-pre-wrap');
+        for (const el of allWhitespace) {
+            const text = el.textContent?.trim();
+            if (!text) continue;
+            // Check this is actually a user message, not a code block or other content
+            // User messages are typically direct children of a specific container
+            // They should NOT be inside an agent response block (.leading-relaxed)
+            let isInsideAgentResponse = false;
+            let parent = el.parentElement;
+            while (parent && parent !== msgList) {
+                const cls = parent.getAttribute('class') || '';
+                if (cls.includes('leading-relaxed') && cls.includes('select-text')) {
+                    isInsideAgentResponse = true;
+                    break;
                 }
-            } else {
-                // User turn
-                const userTextEl = turnEl.querySelector('.whitespace-pre-wrap');
-                if (userTextEl) {
-                    const text = userTextEl.textContent?.trim() || '';
-                    if (text) turns.push({ role: 'user', content: text });
-                }
+                parent = parent.parentElement;
             }
+            if (isInsideAgentResponse) continue;
+
+            // Also skip the placeholder text in the input box
+            if (el.closest('[data-lexical-editor]')) continue;
+            if (el.closest('#antigravity\\.agentSidePanelInputBox')) continue;
+
+            const key = 'user:' + text.substring(0, 200);
+            if (seen.has(key)) continue;
+            seen.add(key);
+
+            candidates.push({ el, role: 'user', content: text });
         }
 
+        // Find agent response blocks
+        const allResponses = msgList.querySelectorAll('.leading-relaxed.select-text');
+        for (const el of allResponses) {
+            // Skip collapsed/hidden blocks
+            let hidden = false;
+            let ancestor = el.parentElement;
+            let depth = 0;
+            while (ancestor && ancestor !== msgList && depth < 15) {
+                const cls = ancestor.getAttribute('class') || '';
+                if (cls.includes('max-h-0') || cls.includes('hidden')) {
+                    hidden = true;
+                    break;
+                }
+                ancestor = ancestor.parentElement;
+                depth++;
+            }
+            if (hidden) continue;
+
+            const clone = el.cloneNode(true);
+            clone.querySelectorAll('style, script').forEach(n => n.remove());
+            const html = clone.innerHTML?.trim();
+            if (!html) continue;
+
+            const key = 'agent:' + el.textContent?.trim().substring(0, 200);
+            if (seen.has(key)) continue;
+            seen.add(key);
+
+            candidates.push({ el, role: 'agent', content: html });
+        }
+
+        // Sort by document position to maintain conversation order
+        candidates.sort((a, b) => {
+            const pos = a.el.compareDocumentPosition(b.el);
+            if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+            if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+            return 0;
+        });
+
+        for (const c of candidates) {
+            turns.push({ role: c.role, content: c.content });
+        }
+
+        // Scroll back to bottom
+        scrollArea.scrollTop = scrollArea.scrollHeight;
+
         return {
-            isRunning: false, // Could check if last turn is still running, but history is mainly for display
-            turnCount: allTurns.length,
+            isRunning: false,
+            turnCount: turns.length,
             turns
         };
     });
@@ -139,9 +216,13 @@ async function getFullAgentState(ctx) {
         const scopeEl = lastTurn || panel;
 
         // Helper to cleanly identify true HITL action buttons and ignore utility buttons like 'Copy'
+        const HITL_WORDS = ['run', 'proceed', 'approve', 'allow', 'yes', 'accept',
+            'continue', 'save', 'confirm', 'deny', 'reject', 'cancel', 'no',
+            'allow once', 'allow this conversation', 'ask every time', 'relocate'];
         const isHitlAction = (text) => {
             if (!text) return false;
-            return /^(run|approve|allow|yes|accept|continue|save|confirm|deny|reject|cancel|no)(\s|$)/i.test(text);
+            const lower = text.trim().toLowerCase();
+            return HITL_WORDS.some(w => lower === w || lower.startsWith(w));
         };
 
         // ── 3. Thinking blocks (scoped) ──
