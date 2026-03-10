@@ -138,6 +138,12 @@ async function getFullAgentState(ctx) {
         // Scope scraping: use lastTurn so we capture all currently rendered tools in any step group
         const scopeEl = lastTurn || panel;
 
+        // Helper to cleanly identify true HITL action buttons and ignore utility buttons like 'Copy'
+        const isHitlAction = (text) => {
+            if (!text) return false;
+            return /^(run|approve|allow|yes|accept|continue|save|confirm|deny|reject|cancel|no)(\s|$)/i.test(text);
+        };
+
         // ── 3. Thinking blocks (scoped) ──
         const thinking = [];
         const thinkingBtns = Array.from(scopeEl.querySelectorAll('button')).filter(b =>
@@ -192,7 +198,7 @@ async function getFullAgentState(ctx) {
             const hasCancelBtn = allBtns.some(b => b.textContent?.trim() === 'Cancel');
             const footerButtons = allBtns
                 .map(b => b.textContent?.trim())
-                .filter(t => t && t !== 'Open' && !t.startsWith('Thought'));
+                .filter(isHitlAction);
 
             // Determine tool type from status text
             let type = 'unknown';
@@ -313,8 +319,6 @@ async function getFullAgentState(ctx) {
                 else if (sl.startsWith('mcp')) type = 'mcp';
 
                 // Capture footer/permission buttons
-                const SKIP_BTNS = new Set(['open', 'show details', 'show', 'hide', 'copy', 'close']);
-
                 let allRowBtns = Array.from(row.querySelectorAll('button'));
 
                 let el = row.parentElement;
@@ -324,7 +328,7 @@ async function getFullAgentState(ctx) {
                     const siblingBtns = Array.from(el.querySelectorAll('button'));
                     for (const btn of siblingBtns) {
                         const t = (btn.textContent || '').trim().toLowerCase();
-                        if ((t.includes('allow') || t.includes('deny') || t === 'cancel') && !foundPermBtns.includes(btn)) {
+                        if (isHitlAction(t) && !foundPermBtns.includes(btn)) {
                             foundPermBtns.push(btn);
                         }
                     }
@@ -340,7 +344,7 @@ async function getFullAgentState(ctx) {
                 allRowBtns = [...new Set(allRowBtns)];
                 const footerButtons = allRowBtns
                     .map(b => b.textContent?.trim())
-                    .filter(t => t && !SKIP_BTNS.has(t.toLowerCase()) && !t.startsWith('Thought'));
+                    .filter(isHitlAction);
                 const hasCancelBtn = footerButtons.some(t => t.toLowerCase() === 'cancel');
 
                 toolCalls.push({
@@ -383,10 +387,7 @@ async function getFullAgentState(ctx) {
                     toolCalls.some(tc => tc.id === permRow.dataset.proxyToolId && tc.footerButtons.length > 0);
                 if (alreadyCaptured) continue;
 
-                const PERM_SKIP = new Set(['open', 'show details', 'show', 'hide', 'copy', 'close']);
-                const actionButtons = permBtnTexts.filter(t =>
-                    !PERM_SKIP.has(t.toLowerCase()) && !t.startsWith('Thought')
-                );
+                const actionButtons = permBtnTexts.filter(isHitlAction);
                 if (actionButtons.length === 0) continue;
 
                 const lastAnalyzed = [...toolCalls].reverse().find(tc =>
