@@ -168,7 +168,7 @@
             const footerDiv = document.createElement('div');
             footerDiv.className = 'tool-footer-actions';
             data.footerButtons.forEach(btnText => {
-                const isApprove = /^(run|approve|allow|yes|accept|continue|save|confirm)/i.test(btnText);
+                const isApprove = /^(run|proceed|approve|allow|yes|accept|continue|save|confirm)([^a-z]|$)/i.test(btnText);
                 const btn = document.createElement('button');
                 btn.className = `tool-action-btn ${isApprove ? 'approve' : 'reject'}`;
                 btn.setAttribute('data-action-btn', btnText);
