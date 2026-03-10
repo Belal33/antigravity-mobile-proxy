@@ -206,4 +206,87 @@ async function startNewChat(ctx) {
     }
 }
 
-module.exports = { sendMessage, clickApproveButton, clickRejectButton, startNewChat };
+/**
+ * Switches the active conversation in the IDE using CDP.
+ * It does this by clicking the 'History' button in the agent panel
+ * and then finding and clicking the conversation item matching the title.
+ */
+async function switchIdeConversation(ctx, conversationTitle) {
+    if (!ctx.workbenchPage || !conversationTitle) return false;
+
+    try {
+        const success = await ctx.workbenchPage.evaluate(async (targetTitle) => {
+            // 1. Check if the history panel is currently open
+            // It usually appears as a drawer or changes state. We'll find the toggle button first.
+            const historyBtn = document.querySelector('a[data-past-conversations-toggle="true"]');
+
+            if (historyBtn) {
+                // Determine if we need to click it. Look for a container that might be the history list
+                const possibleHistoryPanels = Array.from(document.querySelectorAll('div')).filter(
+                    el => el.textContent.includes('Today') || el.textContent.includes('Previous')
+                );
+
+                // If it doesn't seem open, click the toggle
+                if (possibleHistoryPanels.length === 0) {
+                    historyBtn.click();
+                    // Wait a bit for the DOM to render the list
+                    await new Promise(r => setTimeout(r, 200));
+                }
+            }
+
+            // 2. Find the conversation item by text content
+            const allElements = document.querySelectorAll('*');
+            let matchedElement = null;
+
+            for (let i = allElements.length - 1; i >= 0; i--) {
+                const el = allElements[i];
+                if (el.children.length === 0 && el.textContent && el.textContent.includes(targetTitle)) {
+                    let clickable = el;
+                    while (clickable && clickable !== document.body) {
+                        const tag = clickable.tagName.toLowerCase();
+                        const role = clickable.getAttribute('role');
+                        if (tag === 'button' || tag === 'a' || role === 'button' || role === 'menuitem') {
+                            matchedElement = clickable;
+                            break;
+                        }
+                        if (tag === 'div' && clickable.className && clickable.className.includes('cursor-pointer')) {
+                            matchedElement = clickable;
+                            break;
+                        }
+                        clickable = clickable.parentElement;
+                    }
+                    if (matchedElement) break;
+                }
+            }
+
+            // 3. Click the item if found
+            if (matchedElement) {
+                matchedElement.click();
+
+                // Close the history panel if it's an overlay
+                if (historyBtn) {
+                    setTimeout(() => {
+                        const panels = Array.from(document.querySelectorAll('div')).filter(
+                            el => el.textContent.includes('Today') || el.textContent.includes('Previous')
+                        );
+                        if (panels.length > 0) historyBtn.click();
+                    }, 100);
+                }
+                return true;
+            }
+
+            return false;
+        }, conversationTitle);
+
+        if (success) {
+            // Give the IDE time to load the conversation DOM
+            await sleep(500);
+        }
+        return success;
+    } catch (e) {
+        console.error('[Action] Error switching IDE conversation:', e);
+        return false;
+    }
+}
+
+module.exports = { sendMessage, clickApproveButton, clickRejectButton, startNewChat, switchIdeConversation };

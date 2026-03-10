@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { switchIdeConversation } = require('../actions');
 
 const BRAIN_DIR = path.join(os.homedir(), '.gemini', 'antigravity', 'brain');
 
@@ -93,7 +94,7 @@ function handleConversations(req, res, url, ctx) {
         return new Promise((resolve) => {
             let body = '';
             req.on('data', chunk => body += chunk);
-            req.on('end', () => {
+            req.on('end', async () => {
                 try {
                     const { id } = JSON.parse(body);
                     if (!id) {
@@ -112,6 +113,12 @@ function handleConversations(req, res, url, ctx) {
                     ctx.activeConversationId = id;
                     const files = getConversationFiles(convDir);
                     const title = extractTitle(convDir);
+
+                    // Actually switch the conversation inside the IDE via CDP
+                    if (title) {
+                        await switchIdeConversation(ctx, title);
+                    }
+
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ id, title, files, active: true }));
                 } catch (e) {
