@@ -10,6 +10,70 @@ const path = require('path');
 const DEBUG_FILE = path.join('/tmp', 'proxy-debug-state.json');
 
 /**
+ * Get simple chat history for the UI (all turns, user and agent).
+ * Returns: { isRunning, turnCount, turns: [{ role, content }] }
+ */
+async function getChatHistory(ctx) {
+    return await ctx.workbenchPage.evaluate(() => {
+        const panel = document.querySelector('.antigravity-agent-side-panel');
+        if (!panel) return { isRunning: false, turnCount: 0, turns: [] };
+
+        const conversation = panel.querySelector('#conversation') || document.querySelector('#conversation');
+        const scrollArea = conversation?.querySelector('.overflow-y-auto');
+        const msgList = scrollArea?.querySelector('.mx-auto');
+
+        if (!msgList || !msgList.children) {
+            return { isRunning: false, turnCount: 0, turns: [] };
+        }
+
+        const turns = [];
+        const allTurns = Array.from(msgList.children);
+
+        for (const turnEl of allTurns) {
+            // Determine role: agent turns have the distinctive relative flex col gap-y-3 struct
+            const isAgent = !!turnEl.querySelector('.relative.flex.flex-col.gap-y-3');
+
+            if (isAgent) {
+                // For agent turns, extract the final response block(s)
+                const textBlocks = Array.from(turnEl.querySelectorAll('.leading-relaxed.select-text'));
+                const finalBlocks = textBlocks.filter(el => {
+                    let ancestor = el.parentElement;
+                    let depth = 0;
+                    while (ancestor && ancestor !== turnEl && depth < 10) {
+                        const cls = ancestor.getAttribute('class') || '';
+                        if (cls.includes('max-h-0')) return false;
+                        ancestor = ancestor.parentElement;
+                        depth++;
+                    }
+                    return !!el.textContent?.trim();
+                });
+
+                if (finalBlocks.length > 0) {
+                    const block = finalBlocks[finalBlocks.length - 1];
+                    const clone = block.cloneNode(true);
+                    clone.querySelectorAll('style, script').forEach(el => el.remove());
+                    const html = clone.innerHTML?.trim();
+                    if (html) turns.push({ role: 'agent', content: html });
+                }
+            } else {
+                // User turn
+                const userTextEl = turnEl.querySelector('.whitespace-pre-wrap');
+                if (userTextEl) {
+                    const text = userTextEl.textContent?.trim() || '';
+                    if (text) turns.push({ role: 'user', content: text });
+                }
+            }
+        }
+
+        return {
+            isRunning: false, // Could check if last turn is still running, but history is mainly for display
+            turnCount: allTurns.length,
+            turns
+        };
+    });
+}
+
+/**
  * Get a comprehensive snapshot of the entire agent panel state.
  * Includes turn-based scoping to isolate the current conversation turn.
  * Returns: { isRunning, turnCount, thinking[], toolCalls[], responses[],
@@ -528,4 +592,4 @@ async function getFullAgentState(ctx) {
     return state;
 }
 
-module.exports = { getFullAgentState };
+module.exports = { getFullAgentState, getChatHistory };

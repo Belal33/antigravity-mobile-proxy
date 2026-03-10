@@ -41,6 +41,7 @@
             const data = await res.json();
             if (data.success) {
                 App.setStatus('connected', 'New Chat');
+                await App.fetchAndRenderHistory();
             } else {
                 console.warn('New chat in IDE:', data.error || 'unknown error');
             }
@@ -59,9 +60,9 @@
     // ============ Initialize ============
 
     async function init() {
-        App.loadHistory();
         await App.checkHealth();
         await App.loadWindows();
+        await App.fetchAndRenderHistory();
         dom.inputEl.focus();
     }
 

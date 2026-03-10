@@ -62,7 +62,7 @@
             if (data.selected) {
                 const projectName = data.selected.title.split(' - ')[0] || data.selected.title;
                 dom.windowSelectorLabel.textContent = projectName;
-                App.clearHistory();
+                await App.fetchAndRenderHistory();
             }
             await App.loadWindows();
         } catch (e) {

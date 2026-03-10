@@ -1,5 +1,6 @@
 jest.mock('../../src/scraper', () => ({
     getFullAgentState: jest.fn(),
+    getChatHistory: jest.fn(),
 }));
 jest.mock('../../src/actions', () => ({
     sendMessage: jest.fn(),
@@ -13,7 +14,7 @@ jest.mock('../../src/diff', () => ({
 
 const { createMockRes, createMockReq, createMockUrl, createMockCtx } = require('../helpers/mock-http');
 const { handleChat } = require('../../src/routes/chat');
-const { getFullAgentState } = require('../../src/scraper');
+const { getFullAgentState, getChatHistory } = require('../../src/scraper');
 const { sendMessage } = require('../../src/actions');
 const { waitForResponse } = require('../../src/legacy');
 
@@ -61,6 +62,57 @@ describe('routes/chat', () => {
                 { method: 'GET' },
                 res,
                 createMockUrl('/api/chat/state'),
+                createMockCtx()
+            );
+
+            expect(res.statusCode).toBe(500);
+            expect(res.json().error).toContain('timeout');
+        });
+    });
+
+    describe('GET /api/chat/history', () => {
+        test('returns current chat history', async () => {
+            const mockHistory = {
+                isRunning: false, turnCount: 2, turns: [
+                    { role: 'user', content: 'Hi' },
+                    { role: 'agent', content: '<p>Hello</p>' }
+                ]
+            };
+            getChatHistory.mockResolvedValue(mockHistory);
+            const res = createMockRes();
+
+            await handleChat(
+                { method: 'GET' },
+                res,
+                createMockUrl('/api/chat/history'),
+                createMockCtx()
+            );
+
+            expect(res.statusCode).toBe(200);
+            expect(res.json()).toEqual(mockHistory);
+        });
+
+        test('returns 503 when not connected', async () => {
+            const res = createMockRes();
+
+            await handleChat(
+                { method: 'GET' },
+                res,
+                createMockUrl('/api/chat/history'),
+                createMockCtx({ workbenchPage: null })
+            );
+
+            expect(res.statusCode).toBe(503);
+        });
+
+        test('returns 500 on scraper error', async () => {
+            getChatHistory.mockRejectedValue(new Error('Evaluate timeout'));
+            const res = createMockRes();
+
+            await handleChat(
+                { method: 'GET' },
+                res,
+                createMockUrl('/api/chat/history'),
                 createMockCtx()
             );
 

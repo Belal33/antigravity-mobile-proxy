@@ -6,7 +6,7 @@
  *   POST /api/chat/stream  — send message, SSE stream
  */
 
-const { getFullAgentState } = require('../scraper');
+const { getFullAgentState, getChatHistory } = require('../scraper');
 const { sendMessage } = require('../actions');
 const { waitForResponse } = require('../legacy');
 const { diffStates } = require('../diff');
@@ -23,6 +23,24 @@ async function handleChat(req, res, url, ctx) {
             const state = await getFullAgentState(ctx);
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify(state));
+        } catch (e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: e.message }));
+        }
+        return true;
+    }
+
+    // GET /api/chat/history
+    if (url.pathname === '/api/chat/history' && req.method === 'GET') {
+        try {
+            if (!ctx.workbenchPage) {
+                res.writeHead(503, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Not connected to Antigravity' }));
+                return true;
+            }
+            const history = await getChatHistory(ctx);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(history));
         } catch (e) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: e.message }));

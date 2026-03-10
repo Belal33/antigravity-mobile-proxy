@@ -56,6 +56,7 @@ function startServer(ctx) {
         console.log(`  POST /api/chat           → Send message, get full response (blocking)`);
         console.log(`  POST /api/chat/stream    → Send message, SSE stream (typed events)`);
         console.log(`  GET  /api/chat/state     → Get current agent panel state`);
+        console.log(`  GET  /api/chat/history   → Get full rendered chat history`);
         console.log(`  POST /api/chat/approve   → Click approve/run button (HITL)`);
         console.log(`  POST /api/chat/reject    → Click cancel/reject button (HITL)`);
         console.log(`  POST /api/chat/action    → Click any footer button by toolId + buttonText (HITL)`);

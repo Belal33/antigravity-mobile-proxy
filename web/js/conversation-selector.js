@@ -107,6 +107,9 @@
                     App.showArtifactFilesById(data.id, data.title, data.files);
                 }
 
+                // Fetch new chat history
+                await App.fetchAndRenderHistory();
+
                 // Start polling for changes
                 startPolling(data.id);
             }

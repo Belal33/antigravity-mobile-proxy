@@ -1,5 +1,5 @@
 const { createMockCtx } = require('./helpers/mock-http');
-const { getFullAgentState } = require('../src/scraper');
+const { getFullAgentState, getChatHistory } = require('../src/scraper');
 
 describe('scraper', () => {
     describe('getFullAgentState()', () => {
@@ -118,6 +118,39 @@ describe('scraper', () => {
             ctx.workbenchPage.evaluate.mockRejectedValue(new Error('Page crashed'));
 
             await expect(getFullAgentState(ctx)).rejects.toThrow('Page crashed');
+        });
+    });
+
+    describe('getChatHistory()', () => {
+        test('returns simple chat history format', async () => {
+            const mockHistory = {
+                isRunning: false,
+                turnCount: 2,
+                turns: [
+                    { role: 'user', content: 'hello agent' },
+                    { role: 'agent', content: '<p>Hi there</p>' }
+                ]
+            };
+            const ctx = createMockCtx();
+            ctx.workbenchPage.evaluate.mockResolvedValue(mockHistory);
+
+            const result = await getChatHistory(ctx);
+
+            expect(result).toEqual(mockHistory);
+            expect(ctx.workbenchPage.evaluate).toHaveBeenCalledTimes(1);
+        });
+
+        test('returns empty history when panel is missing', async () => {
+            const emptyHistory = {
+                isRunning: false, turnCount: 0, turns: []
+            };
+            const ctx = createMockCtx();
+            ctx.workbenchPage.evaluate.mockResolvedValue(emptyHistory);
+
+            const result = await getChatHistory(ctx);
+
+            expect(result.turnCount).toBe(0);
+            expect(result.turns).toEqual([]);
         });
     });
 });
