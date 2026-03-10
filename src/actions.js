@@ -90,12 +90,44 @@ async function clickRejectButton(ctx) {
  * Start a new chat in the Antigravity IDE by clicking the new-chat button.
  */
 async function startNewChat(ctx) {
-    // First, try to find and click the new-chat button in the IDE panel
+    // First, try to find the new-chat button in the IDE panel and get its coordinates
     const btnResult = await ctx.workbenchPage.evaluate(() => {
         const panel = document.querySelector('.antigravity-agent-side-panel');
         if (!panel) return { success: false, error: 'No panel found' };
 
         const allButtons = Array.from(panel.querySelectorAll('button'));
+
+        const getCoords = (btn, method) => {
+            const rect = btn.getBoundingClientRect();
+            return {
+                success: true,
+                method,
+                clicked: (btn.textContent || '').trim() || btn.getAttribute('aria-label') || '+',
+                x: rect.left + (rect.width / 2),
+                y: rect.top + (rect.height / 2)
+            };
+        };
+
+        // Strategy 0: Exact match using the known VS Code data-tooltip-id
+        const exactBtn = panel.querySelector('a[data-tooltip-id="new-conversation-tooltip"]');
+        if (exactBtn) {
+            if (exactBtn.classList.contains('cursor-not-allowed') || exactBtn.classList.contains('disabled') || getComputedStyle(exactBtn).opacity === '0.5') {
+                // Return success if already in a new chat (button disabled)
+                return { success: true, method: 'tooltip-id-exact-disabled', clicked: 'Already in a new chat' };
+            }
+            return getCoords(exactBtn, 'tooltip-id-exact');
+        }
+
+        // Strategy 0.5: Structural match based on user hint
+        // "fourth button from the right in the top head of the agent panel which contains four buttons"
+        const header = panel.querySelector('.title-actions, .actions-container, [class*="header"], [class*="titlebar"]');
+        if (header) {
+            const headerBtns = Array.from(header.querySelectorAll('button, a.action-label'));
+            if (headerBtns.length >= 4) {
+                const target = headerBtns[headerBtns.length - 4]; // 4th from right
+                return getCoords(target, 'header-4th-from-right');
+            }
+        }
 
         // Strategy 1: aria-label or title containing new/start/create chat keywords
         for (const btn of allButtons) {
@@ -105,8 +137,7 @@ async function startNewChat(ctx) {
             if (combined.includes('new') || combined.includes('start') || combined.includes('create')) {
                 if (combined.includes('chat') || combined.includes('conversation') || combined.includes('session') ||
                     aria.includes('new') || title.includes('new')) {
-                    btn.click();
-                    return { success: true, method: 'aria/title', clicked: aria || title };
+                    return getCoords(btn, 'aria/title');
                 }
             }
         }
@@ -116,31 +147,24 @@ async function startNewChat(ctx) {
             const text = (btn.textContent || '').trim().toLowerCase();
             if (text === '+' || text === 'new chat' || text === 'new conversation' ||
                 text === 'start new chat' || text === 'new' || text === 'start chat') {
-                btn.click();
-                return { success: true, method: 'text', clicked: btn.textContent.trim() };
+                return getCoords(btn, 'text');
             }
         }
 
-        // Strategy 3: SVG-based plus icon button (anywhere in panel, no parent restriction)
+        // Strategy 3: SVG-based plus icon button
         for (const btn of allButtons) {
             const svg = btn.querySelector('svg');
             if (!svg) continue;
 
-            // Check for <line> elements forming a plus sign
             const lines = svg.querySelectorAll('line');
-            if (lines.length === 2) {
-                btn.click();
-                return { success: true, method: 'svg-plus', clicked: '+' };
-            }
+            if (lines.length === 2) return getCoords(btn, 'svg-plus');
 
-            // Check for <path> with a plus-sign d attribute (common in Lucide/Feather icons)
             const paths = svg.querySelectorAll('path');
             for (const p of paths) {
                 const d = (p.getAttribute('d') || '').toLowerCase();
-                if (d.includes('m12 5v14') || d.includes('m5 12h14') || // vertical + horizontal lines
+                if (d.includes('m12 5v14') || d.includes('m5 12h14') ||
                     (d.includes('12') && d.includes('5') && d.includes('19'))) {
-                    btn.click();
-                    return { success: true, method: 'svg-path-plus', clicked: '+' };
+                    return getCoords(btn, 'svg-path-plus');
                 }
             }
         }
@@ -151,17 +175,27 @@ async function startNewChat(ctx) {
             const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
             const title = (btn.getAttribute('title') || '').toLowerCase();
             if (aria.includes('new') || title.includes('new')) {
-                btn.click();
-                return { success: true, method: 'page-header', clicked: aria || title };
+                return getCoords(btn, 'page-header');
             }
         }
 
         return { success: false, error: 'No new-chat button found', buttonCount: allButtons.length };
     });
 
-    if (btnResult.success) return btnResult;
+    if (btnResult.success && btnResult.x && btnResult.y) {
+        // Use native CDP mouse click to bypass VS Code's DOM event restrictions
+        await ctx.workbenchPage.mouse.click(btnResult.x, btnResult.y);
 
-    // Strategy 5: Keyboard shortcut fallback — Ctrl+L is a common "new chat" shortcut in VS Code AI panels
+        // Small delay to let VS Code process the click
+        await new Promise(r => setTimeout(r, 100));
+
+        return btnResult;
+    } else if (btnResult.success && btnResult.method === 'tooltip-id-exact-disabled') {
+        return btnResult;
+    }
+
+
+    // Strategy 5: Keyboard shortcut fallback
     try {
         await ctx.workbenchPage.keyboard.down('Control');
         await ctx.workbenchPage.keyboard.press('l');
