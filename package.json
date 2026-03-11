@@ -1,72 +1,26 @@
 {
-    "name": "antigravity-chat-proxy",
-    "displayName": "Antigravity Chat Proxy",
-    "description": "Chat with Gemini AI from any browser via this extension",
-    "version": "0.2.0",
-    "publisher": "belal",
-    "engines": {
-        "vscode": "^1.95.0"
-    },
-    "categories": [
-        "Other"
-    ],
-    "activationEvents": [
-        "onStartupFinished"
-    ],
-    "main": "./out/extension.js",
-    "contributes": {
-        "commands": [
-            {
-                "command": "antigravity-chat-proxy.start",
-                "title": "Chat Proxy: Start HTTP Server"
-            },
-            {
-                "command": "antigravity-chat-proxy.stop",
-                "title": "Chat Proxy: Stop HTTP Server"
-            }
-        ],
-        "configuration": {
-            "title": "Antigravity Chat Proxy",
-            "properties": {
-                "antigravity-chat-proxy.port": {
-                    "type": "number",
-                    "default": 3456,
-                    "description": "Port for the HTTP server"
-                },
-                "antigravity-chat-proxy.host": {
-                    "type": "string",
-                    "default": "0.0.0.0",
-                    "description": "Host to bind the HTTP server to"
-                },
-                "antigravity-chat-proxy.geminiApiKey": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Your Google Gemini API key (get one free at ai.google.dev)"
-                },
-                "antigravity-chat-proxy.model": {
-                    "type": "string",
-                    "default": "gemini-2.5-flash",
-                    "description": "Gemini model to use (e.g., gemini-2.5-flash, gemini-2.5-pro)"
-                }
-            }
-        }
-    },
-    "scripts": {
-        "vscode:prepublish": "npm run compile",
-        "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./",
-        "test": "jest --verbose",
-        "test:watch": "jest --watch",
-        "package": "npx -y @vscode/vsce package --no-dependencies --allow-missing-repository"
-    },
-    "dependencies": {
-        "@google/genai": "^1.0.0",
-        "puppeteer-core": "^24.38.0"
-    },
-    "devDependencies": {
-        "@types/node": "^20.0.0",
-        "@types/vscode": "^1.95.0",
-        "jest": "^30.2.0",
-        "typescript": "^5.5.0"
-    }
+  "name": "antigravity-chat-proxy-next",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "16.1.6",
+    "puppeteer-core": "^24.39.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.1.6",
+    "typescript": "^5"
+  }
 }

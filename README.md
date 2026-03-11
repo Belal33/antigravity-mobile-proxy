@@ -1,197 +1,362 @@
-# Antigravity Chat Proxy
+<div align="center">
 
-A CDP-based HTTP proxy that lets you interact with the **Antigravity IDE agent** via a REST API and a built-in web UI. It connects to Antigravity's Electron process through Chrome DevTools Protocol, types messages into the agent chat, and extracts the final response from the DOM.
+# 🌐 Antigravity Chat Proxy
 
-## Features
+**Chat with the Antigravity AI Agent from any browser**
 
-- **REST API** — Send messages and receive agent responses via HTTP
-- **Streaming API** — Server-Sent Events for real-time response streaming
-- **Multi-window support** — List and switch between Antigravity IDE windows at runtime
-- **Web UI** — Built-in chat interface with window selection dropdown
-- **Error detection** — Detects agent crashes and returns error messages immediately
-- **Smart response extraction** — Filters out agent "thinking" blocks, returns only the final reply
+A Next.js proxy that bridges your browser to the [Antigravity IDE](https://github.com/anthropics/antigravity) via Chrome DevTools Protocol (CDP), providing a real-time chat interface with full access to the agent's capabilities — file operations, terminal commands, search, MCP tools, and more.
 
-## Prerequisites
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript)](https://typescriptlang.org)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-1. **Antigravity IDE** — Must be launched with CDP enabled:
+</div>
 
-   **Linux / macOS:**
+---
 
-   ```bash
-   # Kill ALL existing instances first (Electron reuses processes)
-   killall antigravity
+## 📋 Table of Contents
 
-   # Launch the binary directly (NOT the CLI wrapper)
-   /usr/share/antigravity/antigravity --remote-debugging-port=9223 /path/to/project
-   ```
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Features](#features)
+- [Getting Started](#getting-started)
+- [API Reference](#api-reference)
+- [Project Structure](#project-structure)
+- [How It Works](#how-it-works)
+- [Configuration](#configuration)
+- [Development](#development)
 
-   **Windows (PowerShell):**
+---
 
-   ```powershell
-   # Kill ALL existing instances first (Electron reuses processes)
-   Get-Process antigravity -ErrorAction SilentlyContinue | Stop-Process -Force
+## Overview
 
-   # Launch Antigravity with CDP enabled
-   Start-Process "$env:LOCALAPPDATA\Programs\Antigravity\Antigravity.exe" -ArgumentList "--remote-debugging-port=9223", "C:\path\to\project"
-   ```
+Antigravity Chat Proxy acts as a bridge between your web browser and the Antigravity IDE (a VS Code fork with an embedded AI agent). It connects to the IDE via **Chrome DevTools Protocol (CDP)** using Puppeteer, scrapes the agent's UI state in real-time, and exposes it through a clean **REST + SSE API** consumed by a React frontend.
 
-   > ⚠️ Using `antigravity . --remote-debugging-port=9223` (the CLI wrapper) will **NOT** work — it passes flags to Node.js, not Electron.
+This enables you to:
+- Chat with the Antigravity agent from **any device** on your network
+- See real-time tool calls, thinking blocks, and responses via **Server-Sent Events**
+- Approve or reject **Human-in-the-Loop (HITL)** actions remotely
+- Browse conversation artifacts and switch between IDE windows
+- Access the full agent experience outside the IDE's native panel
 
-2. **Node.js** — v18+
-
-3. **Dependencies**:
-
-   ```bash
-   npm install
-   ```
-
-## Quick Start
-
-```bash
-# Start the proxy (default: CDP port 9223, HTTP port 3457)
-node proxy-server.js
-
-# Or with custom ports
-CDP_PORT=9223 HTTP_PORT=3457 node proxy-server.js
-```
-
-Open `http://localhost:3457` in your browser for the web UI.
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/chat` | Send message, get full response (JSON) |
-| `POST` | `/api/chat/stream` | Send message, receive SSE stream |
-| `GET`  | `/api/chat/state` | Get current agent panel state |
-| `POST` | `/api/chat/approve` | Click approve/run button (HITL) |
-| `POST` | `/api/chat/reject` | Click cancel/reject button (HITL) |
-| `POST` | `/api/chat/action` | Click any footer button by text (HITL) |
-| `GET`  | `/api/windows` | List all Antigravity workbench windows |
-| `POST` | `/api/windows/select` | Switch target window: `{"index": 1}` |
-| `GET`  | `/api/health` | Health check |
-| `GET`  | `/` | Web chat UI |
-
-### Examples
-
-```bash
-# Simple chat
-curl -X POST http://localhost:3457/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "What is 2+2?"}'
-# → {"response": "4"}
-
-# List windows
-curl http://localhost:3457/api/windows
-# → {"windows": [{"index":0,"title":"myproject - Antigravity","active":true}]}
-
-# Switch window
-curl -X POST http://localhost:3457/api/windows/select \
-  -H "Content-Type: application/json" \
-  -d '{"index": 1}'
-```
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CDP_PORT` | `9223` | Chrome DevTools Protocol port |
-| `HTTP_PORT` | `3457` | HTTP server port |
-| `PROXY_PAGE` | `0` | Default workbench window index |
+---
 
 ## Architecture
 
 ```
-┌─────────────┐     HTTP      ┌──────────────┐      CDP       ┌──────────────────┐
-│  Client /    │◄────────────►│  Proxy Server │◄────────────►│  Antigravity IDE  │
-│  Web UI      │   REST/SSE   │  (Node.js)    │  Puppeteer    │  (Electron app)   │
-└─────────────┘              └──────────────┘              └──────────────────┘
+┌─────────────────┐       ┌──────────────────────┐       ┌─────────────────┐
+│                 │       │                      │       │                 │
+│   Browser UI    │◄─SSE──│   Next.js Proxy       │◄─CDP──│  Antigravity    │
+│   (React)       │──REST─│   (API Routes)        │──────│  IDE (Electron) │
+│                 │       │                      │       │                 │
+└─────────────────┘       └──────────────────────┘       └─────────────────┘
+     Port 3000                  lib/ services               Port 9223
 ```
 
-The proxy:
+### Data Flow
 
-1. Connects to Antigravity via CDP using `puppeteer-core`
-2. Types messages into the agent's chat input
-3. Polls the DOM for the agent's response (filtering out "thinking" blocks)
-4. Returns the final response via HTTP
+1. **User sends a message** → React UI → `POST /api/v1/chat/stream`
+2. **Proxy types into IDE** → CDP → Puppeteer → Antigravity chat input → `Enter`
+3. **Proxy polls agent state** → DOM scraping every 500ms → multi-signal running detection
+4. **State diffs emitted as SSE** → thinking blocks, tool calls, HITL events, responses
+5. **Frontend renders in real-time** → tool call cards, approve/reject buttons, streaming response HTML
+
+---
+
+## Features
+
+### 🔄 Real-Time SSE Streaming
+State diffing engine compares agent snapshots every 500ms and emits granular typed events:
+- `thinking` — "Thought for 5s" blocks
+- `tool_call` — command execution, file edits, search, MCP tools
+- `hitl` — approval required / approval resolved
+- `response` — streaming HTML response content
+- `notification` — agent notifications
+- `file_change` — file diff indicators
+- `status` — running state transitions
+- `error` — agent error detection
+- `done` — completion with final response
+
+### 🛡️ Multi-Signal Completion Detection
+Avoids premature stream termination using 4 independent signals:
+1. **Spinner visibility** — CSS animation detection
+2. **Stop button presence** — aria-label / text matching
+3. **Pending tool calls** — cancel button without exit code
+4. **Step group activity** — progress indicators, status text matching
+
+### 🔧 Human-in-the-Loop (HITL)
+Remote approve/reject for destructive operations:
+- One-click approve (`/api/v1/chat/approve`) or reject (`/api/v1/chat/reject`)
+- Per-tool action buttons via `/api/v1/chat/action` with `toolId` + `buttonText`
+- Permission dialog detection for MCP tools and file access
+
+### 📁 Artifact Browser
+Browse and read agent-generated artifacts:
+- List conversations from `~/.gemini/antigravity/brain/`
+- List files per conversation
+- Serve artifact content with proper MIME types
+
+### 🪟 Multi-Window Support
+Connect to any Antigravity workbench window:
+- Auto-discover all `workbench.html` pages via CDP
+- Switch between windows at runtime
+- Environment variable for default window (`PROXY_PAGE`)
+
+### 🎨 Glassmorphism Dark Theme
+Premium UI with:
+- Dark mode with glass-morphism effects and backdrop blur
+- Animated gradient accents (indigo → purple → pink)
+- Tool call cards with status-based coloring and pulse animations
+- Typing indicator, thinking blocks, and HITL dialogs with micro-animations
+- Inter + JetBrains Mono typography via `next/font`
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- **Node.js** ≥ 18
+- **Antigravity IDE** running with remote debugging enabled:
+  ```bash
+  antigravity --remote-debugging-port=9223
+  ```
+
+### Installation
+
+```bash
+git clone <repo-url>
+cd antigravity-chat-proxy-next
+npm install
+```
+
+### Running
+
+```bash
+# Development (with hot reload)
+npm run dev
+
+# Production
+npm run build
+npm start
+```
+
+Open **http://localhost:3000** in your browser.
+
+---
+
+## API Reference
+
+All endpoints are versioned under `/api/v1/`.
+
+### Health & Status
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/health` | Connection status |
+
+### Chat
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/chat` | Send message (blocking — waits for full response) |
+| `POST` | `/api/v1/chat/stream` | Send message (SSE streaming — real-time events) |
+| `GET` | `/api/v1/chat/state` | Current agent panel state snapshot |
+| `GET` | `/api/v1/chat/history` | Full conversation history (scrolls to de-virtualize) |
+| `POST` | `/api/v1/chat/new` | Start a new chat session in the IDE |
+| `POST` | `/api/v1/chat/approve` | Click the approve/run HITL button |
+| `POST` | `/api/v1/chat/reject` | Click the reject/cancel HITL button |
+| `POST` | `/api/v1/chat/action` | Click any footer button by `toolId` + `buttonText` |
+
+### Conversations
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/conversations` | List all conversations with metadata |
+| `POST` | `/api/v1/conversations/select` | Set active conversation (switches in IDE) |
+| `GET` | `/api/v1/conversations/active` | Get current active conversation |
+
+### Artifacts
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/artifacts` | List all artifact directories |
+| `GET` | `/api/v1/artifacts/:convId` | List files in a conversation |
+| `GET` | `/api/v1/artifacts/:convId/:filename` | Serve a specific artifact file |
+
+### Windows
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/windows` | List available Antigravity workbench windows |
+| `POST` | `/api/v1/windows/select` | Switch to a different window |
+
+### Debug
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/debug/dom` | Raw HTML dump of the agent panel |
+
+### SSE Event Types
+
+When using `/api/v1/chat/stream`, the response is a stream of `data: {JSON}\n\n` lines:
+
+```jsonc
+// Thinking block
+data: {"type":"thinking","time":"Thought for 5s"}
+
+// Tool call (new or updated)
+data: {"type":"tool_call","index":0,"id":"0","status":"Running command","type":"command","command":"ls -la","isNew":true}
+
+// HITL approval required
+data: {"type":"hitl","action":"approval_required","tool":{...}}
+
+// Streaming response (HTML)
+data: {"type":"response","content":"<p>Here are the files...</p>","index":0,"partial":true}
+
+// Completion
+data: {"type":"done","finalResponse":"<p>Done!</p>","isHTML":true}
+```
+
+---
 
 ## Project Structure
 
 ```
-proxy-server.js              ← Entry point (~40 lines)
-src/
-├── cdp.js                   ← CDP connection & window management
-├── selectors.js             ← DOM selector constants
-├── scraper.js               ← Full agent state scraper (DOM → JSON)
-├── legacy.js                ← Legacy blocking response helpers
-├── actions.js               ← sendMessage, clickApprove/Reject
-├── diff.js                  ← SSE state diffing engine
-├── utils.js                 ← sleep() utility
-├── server.js                ← HTTP server & route dispatch
-└── routes/
-    ├── health.js            ├── artifacts.js
-    ├── windows.js           ├── chat.js
-    ├── hitl.js              └── static.js
-tests/
-├── helpers/mock-http.js     ← Reusable mock req/res/ctx factories
-├── utils.test.js            ├── selectors.test.js
-├── diff.test.js             ├── cdp.test.js
-├── scraper.test.js          ├── actions.test.js
-├── legacy.test.js
-└── routes/
-    ├── health.test.js       ├── artifacts.test.js
-    ├── windows.test.js      ├── chat.test.js
-    ├── hitl.test.js         └── static.test.js
-web/
-├── index.html               ← Web chat UI
-├── style.css
-└── js/
-    ├── app.js               ├── api.js
-    ├── sse-handler.js       ├── config.js
-    ├── helpers.js           ├── artifacts.js
-    ├── chat-history.js      ├── window-selector.js
-    └── components/          ← UI components (tool cards, HITL, etc.)
+antigravity-chat-proxy-next/
+│
+├── app/                          # Next.js App Router
+│   ├── layout.tsx                # Root layout (fonts, metadata, global CSS)
+│   ├── page.tsx                  # Main chat page
+│   ├── globals.css               # Consolidated design system (200+ lines)
+│   └── api/v1/                   # 18 versioned API routes
+│       ├── health/route.ts
+│       ├── chat/
+│       │   ├── route.ts          # POST → blocking chat
+│       │   ├── stream/route.ts   # POST → SSE streaming (core endpoint)
+│       │   ├── state/route.ts    # GET → agent state snapshot
+│       │   ├── history/route.ts  # GET → conversation history
+│       │   ├── new/route.ts      # POST → start new chat
+│       │   ├── approve/route.ts  # POST → HITL approve
+│       │   ├── reject/route.ts   # POST → HITL reject
+│       │   └── action/route.ts   # POST → click any button
+│       ├── conversations/        # 3 routes (list, select, active)
+│       ├── artifacts/            # 3 routes (list, files, serve)
+│       ├── windows/              # 2 routes (list, select)
+│       └── debug/dom/route.ts    # DOM dump
+│
+├── components/                   # React UI Components
+│   ├── header.tsx                # Logo, status, window selector, new chat
+│   ├── welcome-screen.tsx        # Landing screen with quick prompts
+│   ├── message-list.tsx          # Scrollable message container
+│   ├── user-message.tsx          # User chat bubble
+│   ├── agent-message.tsx         # Agent response with steps
+│   ├── tool-call-card.tsx        # Tool call visualization
+│   ├── thinking-block.tsx        # "Thought for Xs" indicator
+│   ├── hitl-dialog.tsx           # Approve/reject dialog
+│   ├── typing-indicator.tsx      # Bouncing dots animation
+│   └── chat-input.tsx            # Auto-resizing textarea + send btn
+│
+├── hooks/
+│   └── use-chat.ts               # Central hook: SSE, state, health, HITL
+│
+├── lib/                          # Server-side services (Node.js only)
+│   ├── types.ts                  # Shared TypeScript types
+│   ├── context.ts                # Singleton shared state (replaces ctx)
+│   ├── init.ts                   # Lazy CDP initialization
+│   ├── utils.ts                  # sleep() utility
+│   ├── cdp/
+│   │   ├── connection.ts         # Puppeteer CDP connect/discover/select
+│   │   └── selectors.ts          # DOM selector constants
+│   ├── scraper/
+│   │   ├── agent-state.ts        # Full agent panel scraper (500+ lines)
+│   │   └── chat-history.ts       # Conversation history with scroll de-virtualization
+│   ├── actions/
+│   │   ├── send-message.ts       # Type + Enter via CDP
+│   │   ├── hitl.ts               # Approve/reject/action button clicks
+│   │   ├── new-chat.ts           # Multi-strategy new chat button detection
+│   │   └── switch-conversation.ts # Switch active conversation in IDE
+│   └── sse/
+│       └── diff-states.ts        # State diffing engine for SSE events
+│
+├── next.config.ts
+├── tsconfig.json
+└── package.json
 ```
 
-## Testing
+---
+
+## How It Works
+
+### CDP Connection
+The proxy connects to Antigravity's Electron app via `puppeteer-core` using the Chrome DevTools Protocol. The IDE must be launched with `--remote-debugging-port=9223`. The connection is established lazily on the first API request and the Puppeteer `Page` instance is reused across all subsequent requests via a module-level singleton.
+
+### DOM Scraping
+The scraper (`lib/scraper/agent-state.ts`) runs inside `page.evaluate()` — a function injected into the IDE's renderer process. It walks the agent side panel DOM to extract:
+
+- **Running state** using 4 independent signals (spinner, stop button, pending tools, step indicators)
+- **Thinking blocks** — buttons starting with "Thought for"
+- **Tool calls** — border containers with status headers, commands, terminal output, exit codes
+- **Inline file tools** — file edit/read/search rows with additions/deletions
+- **MCP tools** — tool name, arguments, output
+- **Permission dialogs** — allow/deny button groups
+- **Response blocks** — `.leading-relaxed.select-text` elements (HTML preserved)
+- **Notifications** — `.notify-user-container` blocks
+- **Errors** — text pattern matching for agent termination
+- **File changes** — SVG icon-based diff indicators
+
+### SSE State Diffing
+The diff engine (`lib/sse/diff-states.ts`) compares consecutive agent state snapshots and emits only the changes as typed events. This ensures clients receive granular, efficient updates rather than full state dumps.
+
+### Virtualization Handling
+The IDE uses DOM virtualization for long conversations. The scraper handles this by:
+- **Chat history**: Scrolling from top to bottom in increments to force all content to render
+- **Tool calls**: Assigning persistent `data-proxy-tool-id` attributes and tracking tools in a session-scoped `Map` that survives DOM recycling
+- **Responses**: Accumulating responses in a session array that only grows, never shrinks
+
+---
+
+## Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CDP_PORT` | `9223` | Remote debugging port of the Antigravity IDE |
+| `PROXY_PAGE` | `0` | Index of the workbench window to connect to |
+| `PORT` | `3000` | Next.js server port |
+
+---
+
+## Development
 
 ```bash
-# Run all tests (112 tests, 13 suites, <1s)
-npm test
+# Start dev server with hot reload
+npm run dev
 
-# Watch mode
-npm run test:watch
+# Type check
+npx tsc --noEmit
+
+# Production build
+npm run build
+
+# Start production server
+npm start
 ```
 
-Tests cover:
-- **Unit tests**: `utils`, `selectors`, `diff` (23 edge cases)
-- **Mocked tests**: `cdp`, `scraper`, `actions`, `legacy` (mocked puppeteer/page)
-- **Route tests**: All 6 route handlers with mock HTTP objects
+### Key Design Decisions
 
-## Debugging
+| Decision | Rationale |
+|----------|-----------|
+| **Module singleton** for shared state | Next.js API routes share the Node.js process — a module-level object persists across requests without global state hacks |
+| **Lazy CDP init** | Connection is established on first API call, not at import time — avoids crashes when IDE isn't running |
+| **API versioning** (`/api/v1/`) | Future-proofs the API for breaking changes without disrupting existing consumers |
+| **`legacy.js` dropped** | The 5 blocking helper functions were superseded by the SSE streaming path — the blocking `/api/v1/chat` endpoint uses the scraper directly instead |
+| **HTML response preservation** | `innerHTML` extraction preserves rich formatting (code blocks, lists, links) from the agent's output |
+| **Multi-signal completion** | Using a single signal (e.g., spinner) is unreliable — combining 4 signals prevents premature stream termination |
 
-The scraper writes the latest state to **`/tmp/proxy-debug-state.json`** on every poll. Inspect it with:
+---
 
-```bash
-cat /tmp/proxy-debug-state.json | python3 -m json.tool
-```
+<div align="center">
 
-Contents:
-- `rawLastTurnResponseHTML` — Raw HTML from the agent's last turn
-- `extractedResponses` — Parsed response blocks
-- `toolCalls` — All detected tool calls with status, type, buttons
-- `thinking`, `notifications`, `error`, `isRunning`, `turnCount`
+**Built with [Next.js](https://nextjs.org) · [Puppeteer](https://pptr.dev) · [TypeScript](https://typescriptlang.org)**
 
-## Troubleshooting
-
-| Issue | Cause | Fix |
-|-------|-------|-----|
-| `Failed to fetch browser webSocket URL` | CDP not enabled or wrong port | Kill all Antigravity instances, relaunch with the correct command (see Prerequisites) |
-| `No workbench pages found` | Connected to wrong process (e.g. Chrome browser) | Verify CDP_PORT points to Antigravity, not Chrome |
-| Proxy hangs on "Thinking..." | Spinner detection issue | Already fixed — uses Tailwind `invisible` class check |
-| Empty response | Agent used `notify_user` or thinking blocks only | Already fixed — checks both `.gap-y-3` blocks and `.notify-user-container` |
-| `Port 3457 is already in use` | Previous proxy instance running | **Linux/macOS:** `kill $(lsof -t -i:3457)` · **Windows (PowerShell):** `Get-Process -Id (Get-NetTCPConnection -LocalPort 3457).OwningProcess \| Stop-Process -Force` |
-
-## License
-
-MIT
+</div>
