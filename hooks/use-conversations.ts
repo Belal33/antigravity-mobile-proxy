@@ -3,6 +3,12 @@ import type { WindowInfo, ConversationInfo } from '@/lib/types';
 
 const API_BASE = '/api/v1';
 
+export interface CdpStatus {
+  active: boolean;
+  windowCount: number;
+  error?: string | null;
+}
+
 export function useConversations(
   fetchHistory: () => Promise<void>,
   setShowWelcome: (s: boolean) => void,
@@ -11,6 +17,7 @@ export function useConversations(
   const [windows, setWindows] = useState<WindowInfo[]>([]);
   const [conversations, setConversations] = useState<ConversationInfo[]>([]);
   const [activeConversation, setActiveConversation] = useState<ConversationInfo | null>(null);
+  const [cdpStatus, setCdpStatus] = useState<CdpStatus>({ active: false, windowCount: 0 });
 
   const loadWindows = useCallback(async () => {
     try {
@@ -19,6 +26,77 @@ export function useConversations(
       setWindows(data.windows || []);
     } catch { /* ignore */ }
   }, []);
+
+  const checkCdpStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/windows/cdp-status`);
+      const data = await res.json();
+      setCdpStatus({
+        active: data.active,
+        windowCount: data.windowCount,
+        error: data.error,
+      });
+      return data.active;
+    } catch {
+      setCdpStatus({ active: false, windowCount: 0, error: 'Failed to check' });
+      return false;
+    }
+  }, []);
+
+  const startCdpServer = useCallback(async (projectDir?: string, killExisting?: boolean) => {
+    try {
+      const res = await fetch(`${API_BASE}/windows/cdp-start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectDir: projectDir || '.', killExisting: killExisting || false }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await checkCdpStatus();
+        await loadWindows();
+      }
+      return data;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Failed to start CDP server' };
+    }
+  }, [checkCdpStatus, loadWindows]);
+
+  const openNewWindow = useCallback(async (projectDir: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/windows/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectDir }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Refresh window list after opening
+        await loadWindows();
+        await checkCdpStatus();
+      }
+      return data;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Failed to open window' };
+    }
+  }, [loadWindows, checkCdpStatus]);
+
+  const closeWindowByIndex = useCallback(async (index: number) => {
+    try {
+      const res = await fetch(`${API_BASE}/windows/close`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadWindows();
+        await checkCdpStatus();
+      }
+      return data;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Failed to close window' };
+    }
+  }, [loadWindows, checkCdpStatus]);
 
   const selectWindow = useCallback(async (idx: number) => {
     try {
@@ -82,10 +160,14 @@ export function useConversations(
     windows,
     conversations,
     activeConversation,
+    cdpStatus,
     loadWindows,
     selectWindow,
     loadConversations,
-    selectConversation
+    selectConversation,
+    checkCdpStatus,
+    startCdpServer,
+    openNewWindow,
+    closeWindowByIndex,
   };
 }
-

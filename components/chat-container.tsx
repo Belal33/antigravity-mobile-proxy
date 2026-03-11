@@ -30,10 +30,14 @@ export default function ChatContainer() {
         windows={chat.windows}
         conversations={chat.conversations}
         activeConversation={chat.activeConversation}
+        cdpStatus={chat.cdpStatus}
         onSelectWindow={chat.selectWindow}
         onSelectConversation={chat.selectConversation}
         onNewChat={chat.startNewChat}
         onToggleArtifacts={chat.toggleArtifactPanel}
+        onStartCdp={chat.startCdpServer}
+        onOpenWindow={chat.openNewWindow}
+        onCloseWindow={chat.closeWindowByIndex}
       />
 
       <main className="messages-area" role="log" aria-live="polite">

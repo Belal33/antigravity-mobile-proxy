@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import type { WindowInfo, ConversationInfo } from '@/lib/types';
+import type { CdpStatus } from '@/hooks/use-conversations';
 import ConversationSelector from './conversation-selector';
 
 interface HeaderProps {
@@ -10,18 +11,28 @@ interface HeaderProps {
   windows: WindowInfo[];
   conversations: ConversationInfo[];
   activeConversation: ConversationInfo | null;
+  cdpStatus: CdpStatus;
   onSelectWindow: (idx: number) => void;
   onSelectConversation: (id: string) => void;
   onNewChat: () => void;
   onToggleArtifacts: () => void;
+  onStartCdp: (projectDir?: string, killExisting?: boolean) => Promise<any>;
+  onOpenWindow: (projectDir: string) => Promise<any>;
+  onCloseWindow: (index: number) => Promise<any>;
 }
 
 export default function Header({
   statusState, statusText, windows, conversations, activeConversation,
-  onSelectWindow, onSelectConversation, onNewChat, onToggleArtifacts,
+  cdpStatus, onSelectWindow, onSelectConversation, onNewChat, onToggleArtifacts,
+  onStartCdp, onOpenWindow, onCloseWindow,
 }: HeaderProps) {
   const [windowOpen, setWindowOpen] = useState(false);
+  const [newDirPath, setNewDirPath] = useState('');
+  const [isOpening, setIsOpening] = useState(false);
+  const [isStartingCdp, setIsStartingCdp] = useState(false);
+  const [actionMessage, setActionMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -32,6 +43,63 @@ export default function Header({
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  // Clear action message after 4 seconds
+  useEffect(() => {
+    if (actionMessage) {
+      const t = setTimeout(() => setActionMessage(null), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [actionMessage]);
+
+  const handleStartCdp = async () => {
+    setIsStartingCdp(true);
+    setActionMessage(null);
+    try {
+      const result = await onStartCdp('.', false);
+      setActionMessage({
+        text: result.message || (result.success ? 'CDP started!' : 'Failed to start CDP'),
+        type: result.success ? 'success' : 'error',
+      });
+    } catch {
+      setActionMessage({ text: 'Failed to start CDP server', type: 'error' });
+    } finally {
+      setIsStartingCdp(false);
+    }
+  };
+
+  const handleOpenWindow = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newDirPath.trim();
+    if (!trimmed || isOpening) return;
+
+    setIsOpening(true);
+    setActionMessage(null);
+    try {
+      const result = await onOpenWindow(trimmed);
+      setActionMessage({
+        text: result.message || (result.success ? 'Window opened!' : 'Failed to open'),
+        type: result.success ? 'success' : 'error',
+      });
+      if (result.success) setNewDirPath('');
+    } catch {
+      setActionMessage({ text: 'Failed to open window', type: 'error' });
+    } finally {
+      setIsOpening(false);
+    }
+  };
+
+  const handleCloseWindow = async (idx: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const confirmed = window.confirm(`Close window "${windows[idx]?.title || idx}"?`);
+    if (!confirmed) return;
+
+    const result = await onCloseWindow(idx);
+    setActionMessage({
+      text: result.message || (result.success ? 'Closed!' : 'Failed to close'),
+      type: result.success ? 'success' : 'error',
+    });
+  };
 
   return (
     <header className="header">
@@ -58,28 +126,115 @@ export default function Header({
 
         {/* Window Selector */}
         <div ref={wrapperRef} className={`window-selector-wrapper ${windowOpen ? 'open' : ''}`}>
-          <button className="window-selector-btn" onClick={() => setWindowOpen(!windowOpen)} title="Select Antigravity window">
+          <button className="window-selector-btn" onClick={() => setWindowOpen(!windowOpen)} title="Manage Antigravity windows">
+            {/* CDP status indicator */}
+            <span className={`cdp-indicator ${cdpStatus.active ? 'active' : 'inactive'}`} />
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
               <line x1="8" y1="21" x2="16" y2="21" />
               <line x1="12" y1="17" x2="12" y2="21" />
             </svg>
             <span style={{ maxWidth: '120px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', verticalAlign: 'bottom' }}>
-              {windows.find(w => w.active)?.title || 'Window'}
+              {windows.find(w => w.active)?.title || 'Windows'}
             </span>
             <svg className="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
           <div className={`window-dropdown ${windowOpen ? 'open' : ''}`}>
-            <div className="window-dropdown-header">Antigravity Windows</div>
+            {/* CDP Status Bar */}
+            <div className="wm-cdp-status">
+              <div className="wm-cdp-info">
+                <span className={`wm-cdp-dot ${cdpStatus.active ? 'active' : 'inactive'}`} />
+                <span>{cdpStatus.active ? `CDP Active · ${cdpStatus.windowCount} window${cdpStatus.windowCount !== 1 ? 's' : ''}` : 'CDP Inactive'}</span>
+              </div>
+              {!cdpStatus.active && (
+                <button
+                  className="wm-cdp-start-btn"
+                  onClick={handleStartCdp}
+                  disabled={isStartingCdp}
+                  title="Start Antigravity with CDP"
+                >
+                  {isStartingCdp ? (
+                    <span className="wm-spinner" />
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <polygon points="5 3 19 12 5 21 5 3" />
+                    </svg>
+                  )}
+                  {isStartingCdp ? 'Starting...' : 'Start CDP'}
+                </button>
+              )}
+            </div>
+
+            {/* Window List */}
+            <div className="window-dropdown-header">
+              Open Windows
+            </div>
             {windows.map(w => (
-              <button key={w.index} className={`window-item ${w.active ? 'active' : ''}`} onClick={() => { onSelectWindow(w.index); setWindowOpen(false); }}>
-                <span className="window-dot" />
-                <span>{w.title}</span>
-              </button>
+              <div key={w.index} className={`window-item ${w.active ? 'active' : ''}`}>
+                <button
+                  className="window-item-select"
+                  onClick={() => { onSelectWindow(w.index); setWindowOpen(false); }}
+                >
+                  <span className="window-dot" />
+                  <span className="window-item-title">{w.title}</span>
+                </button>
+                <button
+                  className="window-item-close"
+                  onClick={(e) => handleCloseWindow(w.index, e)}
+                  title={`Close "${w.title}"`}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
             ))}
-            {windows.length === 0 && <div style={{ padding: '12px', color: 'var(--text-muted)', fontSize: '12px' }}>No windows found</div>}
+            {windows.length === 0 && (
+              <div style={{ padding: '12px', color: 'var(--text-muted)', fontSize: '12px' }}>
+                No windows detected
+              </div>
+            )}
+
+            {/* Open New Window */}
+            <div className="wm-open-section">
+              <div className="wm-open-label">Open New Window</div>
+              <form className="wm-open-form" onSubmit={handleOpenWindow}>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  className="wm-open-input"
+                  value={newDirPath}
+                  onChange={(e) => setNewDirPath(e.target.value)}
+                  placeholder="/path/to/project"
+                  disabled={isOpening}
+                />
+                <button
+                  type="submit"
+                  className="wm-open-btn"
+                  disabled={isOpening || !newDirPath.trim()}
+                  title="Open directory in Antigravity"
+                >
+                  {isOpening ? (
+                    <span className="wm-spinner" />
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                  )}
+                </button>
+              </form>
+            </div>
+
+            {/* Action Message Toast */}
+            {actionMessage && (
+              <div className={`wm-action-message ${actionMessage.type}`}>
+                {actionMessage.text}
+              </div>
+            )}
           </div>
         </div>
 
