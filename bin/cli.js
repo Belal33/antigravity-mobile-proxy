@@ -40,7 +40,7 @@ const fmt = {
 };
 
 // ── Config file path ────────────────────────────────────────────────────
-const CONFIG_DIR = path.join(os.homedir(), '.antigravity-chat-proxy');
+const CONFIG_DIR = path.join(os.homedir(), '.antigravity-mobile-proxy');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const APP_DIR = path.join(CONFIG_DIR, 'app');
 
@@ -145,7 +145,7 @@ function clearLine() {
 function printBanner() {
   console.log('');
   console.log(`  ${c.bold}${c.cyan}╔═══════════════════════════════════════════════════════╗${c.reset}`);
-  console.log(`  ${c.bold}${c.cyan}║${c.reset}  ${c.bold}🚀 Antigravity Chat Proxy${c.reset}                           ${c.bold}${c.cyan}║${c.reset}`);
+  console.log(`  ${c.bold}${c.cyan}║${c.reset}  ${c.bold}🚀 Antigravity Mobile Proxy${c.reset}                          ${c.bold}${c.cyan}║${c.reset}`);
   console.log(`  ${c.bold}${c.cyan}║${c.reset}  ${c.dim}Secure tunnel to your IDE with Google OAuth${c.reset}          ${c.bold}${c.cyan}║${c.reset}`);
   console.log(`  ${c.bold}${c.cyan}╚═══════════════════════════════════════════════════════╝${c.reset}`);
   console.log('');
@@ -172,8 +172,8 @@ function parseArgs() {
 function printHelp() {
   printBanner();
   console.log(`  ${fmt.bold('Usage:')}`);
-  console.log(`    ${fmt.cyan('npx antigravity-chat-proxy')}                ${fmt.dim('# Interactive setup wizard')}`);
-  console.log(`    ${fmt.cyan('npx antigravity-chat-proxy --email me@gmail.com')}  ${fmt.dim('# Skip wizard')}`);
+  console.log(`    ${fmt.cyan('npx antigravity-mobile-proxy')}                ${fmt.dim('# Interactive setup wizard')}`);
+  console.log(`    ${fmt.cyan('npx antigravity-mobile-proxy --email me@gmail.com')}  ${fmt.dim('# Skip wizard')}`);
   console.log('');
   console.log(`  ${fmt.bold('Options:')}`);
   console.log(`    ${fmt.cyan('--email')} <email>       Google email to allow access`);
@@ -186,7 +186,7 @@ function printHelp() {
   console.log(`  ${fmt.bold('Environment Variables:')}`);
   console.log(`    ${fmt.cyan('NGROK_AUTHTOKEN')}       Your ngrok authtoken`);
   console.log('');
-  console.log(`  ${fmt.bold('First-time setup?')} Just run ${fmt.cyan('npx antigravity-chat-proxy')} and follow the wizard!`);
+  console.log(`  ${fmt.bold('First-time setup?')} Just run ${fmt.cyan('npx antigravity-mobile-proxy')} and follow the wizard!`);
   console.log('');
 }
 
@@ -232,7 +232,7 @@ async function runWizard(cliArgs) {
   const isFirstRun = !config.email && !config.port;
 
   if (isFirstRun) {
-    console.log(`  ${fmt.info('Welcome! Let\'s set up your Antigravity Chat Proxy.')}`);
+    console.log(`  ${fmt.info('Welcome! Let\'s set up your Antigravity Mobile Proxy.')}`);
     console.log(`  ${fmt.dim('This wizard will guide you through the configuration.')}`);
     console.log(`  ${fmt.dim('Your settings will be saved for next time.')}`);
     console.log('');
@@ -607,7 +607,7 @@ async function startTunnel({ port, email, authtoken, projectRoot }) {
       console.log('');
       console.log(`  ${fmt.warn('Your authtoken may be invalid or expired.')}`);
       console.log(`  ${fmt.dim('Get a new one at:')} ${fmt.link('https://dashboard.ngrok.com/authtokens')}`);
-      console.log(`  ${fmt.dim('Then run:')} ${fmt.cyan('npx antigravity-chat-proxy --reset')}`);
+      console.log(`  ${fmt.dim('Then run:')} ${fmt.cyan('npx antigravity-mobile-proxy --reset')}`);
     }
 
     console.log('');
