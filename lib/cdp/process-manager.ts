@@ -1,22 +1,83 @@
 /**
- * Antigravity Process Manager
+ * Antigravity Process Manager (Cross-Platform)
  * 
  * Manages the Antigravity IDE process lifecycle:
  * - Check if CDP server is active
  * - Start the Antigravity binary with remote debugging
  * - Open new windows in a specific directory
  * - Close individual windows
+ * 
+ * Supports: Linux, macOS, and Windows
  */
 
 import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
+import { existsSync, statSync } from 'fs';
+import { resolve } from 'path';
 import { logger } from '../logger';
 
 const execAsync = promisify(exec);
 
-const ANTIGRAVITY_BINARY = '/usr/share/antigravity/antigravity';
 const CDP_PORT_RAW = process.env.CDP_PORT || '9223';
 const CDP_PORT = parseInt(CDP_PORT_RAW, 10);
+const IS_WIN = process.platform === 'win32';
+const IS_MAC = process.platform === 'darwin';
+
+/**
+ * Resolve the Antigravity binary path based on the OS.
+ * Can be overridden with ANTIGRAVITY_BINARY env var.
+ */
+function getAntigravityBinary(): string {
+  // Allow explicit override via env
+  if (process.env.ANTIGRAVITY_BINARY) {
+    return process.env.ANTIGRAVITY_BINARY;
+  }
+
+  if (IS_WIN) {
+    // Windows: check common install locations
+    const candidates = [
+      resolve(process.env.LOCALAPPDATA || '', 'Programs', 'Antigravity', 'Antigravity.exe'),
+      resolve(process.env.PROGRAMFILES || 'C:\\Program Files', 'Google', 'Antigravity', 'Antigravity.exe'),
+      resolve(process.env.PROGRAMFILES || 'C:\\Program Files', 'Antigravity', 'Antigravity.exe'),
+    ];
+    for (const candidate of candidates) {
+      if (candidate && existsSync(candidate)) return candidate;
+    }
+    // Fallback — assume it's in PATH
+    return 'Antigravity.exe';
+  }
+
+  if (IS_MAC) {
+    // macOS: standard .app bundle location
+    const macBinary = '/Applications/Antigravity.app/Contents/MacOS/Antigravity';
+    if (existsSync(macBinary)) return macBinary;
+    // Also check user Applications folder
+    const userMacBinary = resolve(process.env.HOME || '', 'Applications', 'Antigravity.app', 'Contents', 'MacOS', 'Antigravity');
+    if (existsSync(userMacBinary)) return userMacBinary;
+    return macBinary; // fallback to standard path
+  }
+
+  // Linux
+  return '/usr/share/antigravity/antigravity';
+}
+
+/**
+ * Kill all existing Antigravity processes (cross-platform).
+ */
+async function killAllAntigravity(): Promise<void> {
+  try {
+    if (IS_WIN) {
+      await execAsync('taskkill /F /IM Antigravity.exe 2>nul || exit 0');
+    } else {
+      await execAsync('killall antigravity 2>/dev/null || true');
+    }
+    logger.info('[ProcessManager] Killed existing Antigravity processes.');
+    // Wait for process cleanup
+    await new Promise(resolve => setTimeout(resolve, 1500));
+  } catch {
+    // Ignore errors - process might not exist
+  }
+}
 
 /** Track spawned processes so we can clean up if needed */
 let spawnedProcess: ChildProcess | null = null;
@@ -73,27 +134,37 @@ export async function startCdpServer(
 
   // Kill existing Antigravity instances if requested (required for clean CDP start)
   if (killExisting) {
-    try {
-      await execAsync('killall antigravity 2>/dev/null || true');
-      logger.info('[ProcessManager] Killed existing Antigravity processes.');
-      // Wait for process cleanup
-      await new Promise(resolve => setTimeout(resolve, 1500));
-    } catch {
-      // Ignore errors - process might not exist
+    await killAllAntigravity();
+  }
+
+  const binaryPath = getAntigravityBinary();
+  // resolve() handles both absolute ('/home/user/proj') and relative ('my-proj') paths correctly
+  const absoluteDir = resolve(projectDir || '.');
+
+  // Validate the directory exists
+  try {
+    const stat = statSync(absoluteDir);
+    if (!stat.isDirectory()) {
+      return { success: false, message: `"${absoluteDir}" is not a directory.` };
     }
+  } catch {
+    return { success: false, message: `Directory not found: "${absoluteDir}"` };
   }
 
   // Spawn the Antigravity binary
   try {
-    logger.info(`[ProcessManager] Starting Antigravity: ${ANTIGRAVITY_BINARY} --remote-debugging-port=${CDP_PORT} ${projectDir}`);
+    logger.info(`[ProcessManager] Starting Antigravity: ${binaryPath} --remote-debugging-port=${CDP_PORT} --new-window ${absoluteDir}`);
+    logger.info(`[ProcessManager] Platform: ${process.platform}, Binary: ${binaryPath}`);
 
     spawnedProcess = spawn(
-      ANTIGRAVITY_BINARY,
-      [`--remote-debugging-port=${CDP_PORT}`, projectDir],
+      binaryPath,
+      [`--remote-debugging-port=${CDP_PORT}`, '--new-window', absoluteDir],
       {
-        detached: true,
+        detached: !IS_WIN, // detached not needed on Windows
         stdio: 'ignore',
         env: { ...process.env },
+        // On Windows, use shell to resolve .exe correctly
+        shell: IS_WIN,
       }
     );
 
@@ -147,20 +218,35 @@ export async function openNewWindow(projectDir: string): Promise<{
   success: boolean;
   message: string;
 }> {
+  // resolve() handles both absolute ('/home/user/proj') and relative ('my-proj') paths correctly
+  const absoluteDir = resolve(projectDir);
+
+  // Validate the directory exists before trying to open
+  try {
+    const stat = statSync(absoluteDir);
+    if (!stat.isDirectory()) {
+      return { success: false, message: `"${absoluteDir}" is not a directory. Please provide a folder path.` };
+    }
+  } catch {
+    return { success: false, message: `Directory not found: "${absoluteDir}". Make sure the path exists.` };
+  }
+
   const status = await isCdpServerActive();
+  const binaryPath = getAntigravityBinary();
 
   if (status.active) {
     // Antigravity is already running — open a new window via CLI
     // This will open a new window in the same Electron process
     try {
-      logger.info(`[ProcessManager] Opening new window for: ${projectDir}`);
+      logger.info(`[ProcessManager] Opening new window for: ${absoluteDir}`);
       const child = spawn(
-        ANTIGRAVITY_BINARY,
-        [projectDir],
+        binaryPath,
+        ['--new-window', absoluteDir],
         {
-          detached: true,
+          detached: !IS_WIN,
           stdio: 'ignore',
           env: { ...process.env },
+          shell: IS_WIN,
         }
       );
       child.unref();
@@ -169,7 +255,7 @@ export async function openNewWindow(projectDir: string): Promise<{
       await new Promise(resolve => setTimeout(resolve, 3000));
       return {
         success: true,
-        message: `Opened new window for "${projectDir}".`,
+        message: `Opened new window for "${absoluteDir}".`,
       };
     } catch (e: any) {
       return { success: false, message: `Failed to open window: ${e.message}` };
