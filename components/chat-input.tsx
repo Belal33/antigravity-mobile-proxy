@@ -68,6 +68,8 @@ export default function ChatInput({ onSend, isStreaming, currentMode, onToggleMo
           placeholder="Ask the Antigravity agent..."
           rows={1}
           aria-label="Chat message input"
+          enterKeyHint="send"
+          autoComplete="off"
         />
         <button
           className="send-btn"
