@@ -31,6 +31,7 @@ export default function ChatContainer() {
         conversations={chat.conversations}
         activeConversation={chat.activeConversation}
         cdpStatus={chat.cdpStatus}
+        recentProjects={chat.recentProjects}
         onSelectWindow={chat.selectWindow}
         onSelectConversation={chat.selectConversation}
         onNewChat={chat.startNewChat}

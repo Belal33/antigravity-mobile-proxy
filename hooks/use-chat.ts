@@ -64,6 +64,7 @@ export function useChat() {
     conversations,
     activeConversation,
     cdpStatus,
+    recentProjects,
     loadWindows,
     selectWindow,
     loadConversations,
@@ -72,6 +73,7 @@ export function useChat() {
     startCdpServer,
     openNewWindow,
     closeWindowByIndex,
+    loadRecentProjects,
   } = useConversations(fetchHistory, setShowWelcome, handleConversationSwitched);
 
 
@@ -253,12 +255,13 @@ export function useChat() {
     loadArtifacts();
     fetchMode();
     checkCdpStatus();
+    loadRecentProjects();
 
     // Passive polling for health and CDP status
     const healthTimer = setInterval(checkHealth, 30000);
     const cdpTimer = setInterval(checkCdpStatus, 15000);
     return () => { clearInterval(healthTimer); clearInterval(cdpTimer); };
-  }, [checkHealth, loadWindows, fetchHistory, loadConversations, loadArtifacts, fetchMode, checkCdpStatus]);
+  }, [checkHealth, loadWindows, fetchHistory, loadConversations, loadArtifacts, fetchMode, checkCdpStatus, loadRecentProjects]);
 
   useEffect(scrollToBottom, [messages, currentSteps, currentResponse, scrollToBottom]);
 
@@ -266,7 +269,7 @@ export function useChat() {
     messages, isStreaming, isConnected, statusText, statusState,
     showWelcome, currentSteps, currentResponse, windows,
     conversations, activeConversation, artifactFiles, artifactPanelOpen,
-    currentMode, cdpStatus,
+    currentMode, cdpStatus, recentProjects,
     sendMessage, startNewChat, approve, reject,
     selectWindow, selectConversation, toggleArtifactPanel, openArtifactPanel,
     toggleMode, startCdpServer, openNewWindow, closeWindowByIndex,

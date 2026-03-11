@@ -230,6 +230,18 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', -apple-system
 .wm-action-message.error { color: var(--error); background: rgba(239, 68, 68, 0.06); }
 
 /* Spinner */
+/* Recent Projects section */
+.wm-recent-section { border-top: 1px solid var(--border-subtle); max-height: 200px; overflow-y: auto; }
+.wm-recent-header { padding: 8px 12px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); border-bottom: 1px solid var(--border-subtle); position: sticky; top: 0; background: var(--bg-secondary); z-index: 1; }
+.wm-recent-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 12px; border: none; background: transparent; color: var(--text-secondary); font-family: inherit; cursor: pointer; transition: all var(--transition-fast); text-align: left; }
+.wm-recent-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.wm-recent-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.wm-recent-icon { color: var(--accent-primary); flex-shrink: 0; }
+.wm-recent-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; overflow: hidden; }
+.wm-recent-name { font-size: 12px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wm-recent-path { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Spinner */
 .wm-spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255, 255, 255, 0.15); border-top-color: currentColor; border-radius: 50%; animation: wm-spin 0.6s linear infinite; }
 
 /* ── Artifact Panel ── */

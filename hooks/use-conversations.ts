@@ -9,6 +9,12 @@ export interface CdpStatus {
   error?: string | null;
 }
 
+export interface RecentProject {
+  path: string;
+  name: string;
+  lastOpened: string;
+}
+
 export function useConversations(
   fetchHistory: () => Promise<void>,
   setShowWelcome: (s: boolean) => void,
@@ -18,6 +24,7 @@ export function useConversations(
   const [conversations, setConversations] = useState<ConversationInfo[]>([]);
   const [activeConversation, setActiveConversation] = useState<ConversationInfo | null>(null);
   const [cdpStatus, setCdpStatus] = useState<CdpStatus>({ active: false, windowCount: 0 });
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
 
   const loadWindows = useCallback(async () => {
     try {
@@ -156,11 +163,20 @@ export function useConversations(
     } catch { /* ignore */ }
   }, [fetchHistory, setShowWelcome, onConversationSwitched]);
 
+  const loadRecentProjects = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/windows/recent`);
+      const data = await res.json();
+      setRecentProjects(data.recentProjects || []);
+    } catch { /* ignore */ }
+  }, []);
+
   return {
     windows,
     conversations,
     activeConversation,
     cdpStatus,
+    recentProjects,
     loadWindows,
     selectWindow,
     loadConversations,
@@ -169,5 +185,6 @@ export function useConversations(
     startCdpServer,
     openNewWindow,
     closeWindowByIndex,
+    loadRecentProjects,
   };
 }

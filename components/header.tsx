@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import type { WindowInfo, ConversationInfo } from '@/lib/types';
-import type { CdpStatus } from '@/hooks/use-conversations';
+import type { CdpStatus, RecentProject } from '@/hooks/use-conversations';
 import ConversationSelector from './conversation-selector';
 
 interface HeaderProps {
@@ -12,6 +12,7 @@ interface HeaderProps {
   conversations: ConversationInfo[];
   activeConversation: ConversationInfo | null;
   cdpStatus: CdpStatus;
+  recentProjects: RecentProject[];
   onSelectWindow: (idx: number) => void;
   onSelectConversation: (id: string) => void;
   onNewChat: () => void;
@@ -23,7 +24,7 @@ interface HeaderProps {
 
 export default function Header({
   statusState, statusText, windows, conversations, activeConversation,
-  cdpStatus, onSelectWindow, onSelectConversation, onNewChat, onToggleArtifacts,
+  cdpStatus, recentProjects, onSelectWindow, onSelectConversation, onNewChat, onToggleArtifacts,
   onStartCdp, onOpenWindow, onCloseWindow,
 }: HeaderProps) {
   const [windowOpen, setWindowOpen] = useState(false);
@@ -195,6 +196,43 @@ export default function Header({
             {windows.length === 0 && (
               <div style={{ padding: '12px', color: 'var(--text-muted)', fontSize: '12px' }}>
                 No windows detected
+              </div>
+            )}
+            {/* Recent Projects */}
+            {recentProjects.length > 0 && (
+              <div className="wm-recent-section">
+                <div className="wm-recent-header">Recent Projects</div>
+                {recentProjects.map(p => (
+                  <button
+                    key={p.path}
+                    className="wm-recent-item"
+                    onClick={async () => {
+                      setIsOpening(true);
+                      setActionMessage(null);
+                      try {
+                        const result = await onOpenWindow(p.path);
+                        setActionMessage({
+                          text: result.message || (result.success ? 'Opened!' : 'Failed'),
+                          type: result.success ? 'success' : 'error',
+                        });
+                      } catch {
+                        setActionMessage({ text: 'Failed to open', type: 'error' });
+                      } finally {
+                        setIsOpening(false);
+                      }
+                    }}
+                    disabled={isOpening}
+                    title={p.path}
+                  >
+                    <svg className="wm-recent-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                    </svg>
+                    <div className="wm-recent-info">
+                      <span className="wm-recent-name">{p.name}</span>
+                      <span className="wm-recent-path">{p.path}</span>
+                    </div>
+                  </button>
+                ))}
               </div>
             )}
 
