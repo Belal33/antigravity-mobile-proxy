@@ -1,15 +1,39 @@
 {
-  "name": "antigravity-chat-proxy-next",
-  "version": "0.1.0",
-  "private": true,
+  "name": "antigravity-chat-proxy",
+  "version": "0.2.0",
+  "description": "A web chat proxy for Antigravity IDE with ngrok OAuth tunnel support",
+  "keywords": [
+    "antigravity",
+    "ide",
+    "chat",
+    "proxy",
+    "ngrok"
+  ],
+  "license": "MIT",
+  "bin": {
+    "antigravity-chat-proxy": "bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "app/",
+    "components/",
+    "hooks/",
+    "lib/",
+    "public/",
+    "next.config.ts",
+    "tsconfig.json",
+    "package.json"
+  ],
   "scripts": {
     "dev": "next dev -p 5555",
     "build": "next build",
     "start": "next start -p 5555",
+    "tunnel": "node bin/cli.js",
     "lint": "next lint",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@ngrok/ngrok": "^1.7.0",
     "next": "16.1.6",
     "puppeteer-core": "^24.39.0",
     "react": "19.2.3",
