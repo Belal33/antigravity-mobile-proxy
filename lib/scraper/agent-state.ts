@@ -89,14 +89,22 @@ export async function getFullAgentState(ctx: ProxyContext): Promise<AgentState> 
           const html = btn.innerHTML || '';
           const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
           const text = (btn.textContent || '').trim().toLowerCase();
+          const tooltipId = (btn.getAttribute('data-tooltip-id') || '').toLowerCase();
           
-          if (
-            html.includes('lucide-square') || 
+          // The send/stop button changes its tooltip and contents.
+          // We must be careful not to match 'lucide-square-slash' or other derived 
+          // square icons by ensuring 'lucide-square' is followed by a non-word character.
+          const isStopIcon = 
+            html.match(/lucide-square(?:[^a-z0-9-]|$)/i) || 
             html.includes('lucide-circle-stop') || 
-            html.includes('lucide-octagon') ||
+            html.includes('lucide-octagon');
+
+          if (
+            isStopIcon ||
             ariaLabel.includes('stop') ||
             ariaLabel.includes('cancel') ||
-            text === 'stop'
+            text === 'stop' ||
+            tooltipId.includes('stop')
           ) {
             hasStop = true;
           }
@@ -109,7 +117,8 @@ export async function getFullAgentState(ctx: ProxyContext): Promise<AgentState> 
             html.includes('lucide-corner-down-left') ||
             ariaLabel.includes('send') ||
             ariaLabel.includes('submit') ||
-            text === 'send'
+            text === 'send' ||
+            tooltipId.includes('send')
           ) {
             hasSend = true;
           }
