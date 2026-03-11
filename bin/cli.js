@@ -205,6 +205,8 @@ function detectAuthtoken() {
     path.join(os.homedir(), '.config', 'ngrok', 'ngrok.yml'),
     path.join(os.homedir(), '.ngrok2', 'ngrok.yml'),
     path.join(os.homedir(), 'Library', 'Application Support', 'ngrok', 'ngrok.yml'),
+    // Windows
+    path.join(os.homedir(), 'AppData', 'Local', 'ngrok', 'ngrok.yml'),
   ];
 
   for (const configPath of ngrokConfigPaths) {
@@ -439,7 +441,7 @@ function prepareWorkingDirectory() {
   console.log(`  ${fmt.dim('▸ Installing dependencies (this may take a minute)...')}`);
 
   try {
-    execSync('npm install --production', {
+    execSync('npm install --omit=dev', {
       cwd: APP_DIR,
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 120000,
@@ -454,19 +456,12 @@ function prepareWorkingDirectory() {
   return APP_DIR;
 }
 
-// ── Spawn helper (avoids shell: true deprecation) ───────────────────────
+// ── Spawn helper (cross-platform, no shell) ────────────────────────────
 function spawnNext(args, cwd, stdio) {
-  const nextBin = path.join(cwd, 'node_modules', '.bin', 'next');
-
-  // Try local next binary first, fallback to npx
-  if (fs.existsSync(nextBin)) {
-    return spawn(nextBin, args, { cwd, stdio });
-  }
-
-  return spawn(process.execPath, [
-    path.join(cwd, 'node_modules', 'next', 'dist', 'bin', 'next'),
-    ...args,
-  ], { cwd, stdio });
+  // Always use node + module path — works on Windows, macOS, and Linux
+  // (node_modules/.bin/next is a .cmd on Windows, can't spawn without shell)
+  const nextEntry = path.join(cwd, 'node_modules', 'next', 'dist', 'bin', 'next');
+  return spawn(process.execPath, [nextEntry, ...args], { cwd, stdio });
 }
 
 // ── Server Startup ──────────────────────────────────────────────────────
@@ -593,7 +588,7 @@ async function startTunnel({ port, email, authtoken, projectRoot }) {
     console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
     console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${c.green}${c.bold}🌐 Your app is live!${c.reset}                              ${c.bold}${c.cyan}║${c.reset}`);
     console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
-    console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${fmt.bold(url)}${' '.repeat(Math.max(0, 40 - url.length))}${c.bold}${c.cyan}║${c.reset}`);
+    console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${url} ${' '.repeat(Math.max(0, 39 - url.length))}${c.bold}${c.cyan}║${c.reset}`);
     console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
     console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${c.dim}🔒 Google OAuth → ${email}${' '.repeat(Math.max(0, 23 - email.length))}${c.reset}${c.bold}${c.cyan}║${c.reset}`);
     console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
