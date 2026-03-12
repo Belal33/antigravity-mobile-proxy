@@ -15,13 +15,9 @@
   },
   "files": [
     "bin/",
-    "app/",
-    "components/",
-    "hooks/",
-    "lib/",
+    ".next/standalone/",
+    ".next/static/",
     "public/",
-    "next.config.ts",
-    "tsconfig.json",
     "package.json"
   ],
   "scripts": {
@@ -30,7 +26,8 @@
     "start": "next start -p 5555",
     "tunnel": "node bin/cli.js",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "prepublishOnly": "NODE_ENV=production npm run build"
   },
   "dependencies": {
     "@ngrok/ngrok": "^1.7.0",

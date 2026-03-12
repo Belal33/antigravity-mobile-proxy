@@ -42,7 +42,6 @@ const fmt = {
 // ── Config file path ────────────────────────────────────────────────────
 const CONFIG_DIR = path.join(os.homedir(), '.antigravity-mobile-proxy');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
-const APP_DIR = path.join(CONFIG_DIR, 'app');
 
 function loadConfig() {
   try {
@@ -359,13 +358,40 @@ async function runWizard(cliArgs) {
   return { email, port, authtoken };
 }
 
-// ── Project Setup (handles npx case) ────────────────────────────────────
+// ── Project Setup ───────────────────────────────────────────────────────
 function getPackageRoot() {
   return path.resolve(__dirname, '..');
 }
 
-function isInsideNodeModules(dir) {
-  return dir.includes('node_modules');
+function getStandaloneDir() {
+  return path.join(getPackageRoot(), '.next', 'standalone');
+}
+
+function isPrebuilt() {
+  const standaloneServer = path.join(getStandaloneDir(), 'server.js');
+  return fs.existsSync(standaloneServer);
+}
+
+function setupStandaloneAssets() {
+  const packageRoot = getPackageRoot();
+  const standaloneDir = getStandaloneDir();
+
+  // The standalone output needs static files and public assets to be in the right place.
+  // Copy .next/static → .next/standalone/.next/static
+  const srcStatic = path.join(packageRoot, '.next', 'static');
+  const destStatic = path.join(standaloneDir, '.next', 'static');
+
+  if (fs.existsSync(srcStatic) && !fs.existsSync(destStatic)) {
+    copyDirSync(srcStatic, destStatic);
+  }
+
+  // Copy public/ → .next/standalone/public
+  const srcPublic = path.join(packageRoot, 'public');
+  const destPublic = path.join(standaloneDir, 'public');
+
+  if (fs.existsSync(srcPublic) && !fs.existsSync(destPublic)) {
+    copyDirSync(srcPublic, destPublic);
+  }
 }
 
 function copyDirSync(src, dest) {
@@ -376,92 +402,12 @@ function copyDirSync(src, dest) {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
 
-    // Skip node_modules, .next, .git
-    if (['node_modules', '.next', '.git', '.env.local'].includes(entry.name)) continue;
-
     if (entry.isDirectory()) {
       copyDirSync(srcPath, destPath);
     } else {
       fs.copyFileSync(srcPath, destPath);
     }
   }
-}
-
-function getPackageVersion() {
-  try {
-    const pkgPath = path.join(getPackageRoot(), 'package.json');
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-    return pkg.version || '0.0.0';
-  } catch {
-    return '0.0.0';
-  }
-}
-
-function prepareWorkingDirectory() {
-  const packageRoot = getPackageRoot();
-
-  // If running from the actual project (not node_modules), use it directly
-  if (!isInsideNodeModules(packageRoot)) {
-    return packageRoot;
-  }
-
-  // Running from npx/node_modules — copy to a working directory
-  const currentVersion = getPackageVersion();
-  const versionFile = path.join(APP_DIR, '.version');
-
-  // Check if already set up with the same version
-  let existingVersion = null;
-  try {
-    if (fs.existsSync(versionFile)) {
-      existingVersion = fs.readFileSync(versionFile, 'utf-8').trim();
-    }
-  } catch {}
-
-  if (existingVersion === currentVersion && fs.existsSync(path.join(APP_DIR, 'package.json'))) {
-    console.log(`  ${fmt.success(`App v${currentVersion} already installed`)}`);
-    return APP_DIR;
-  }
-
-  // Copy files to working directory
-  console.log(`  ${fmt.dim('▸ Setting up app directory...')}`);
-
-  // Clean old version if exists
-  if (fs.existsSync(APP_DIR)) {
-    fs.rmSync(APP_DIR, { recursive: true, force: true });
-  }
-
-  copyDirSync(packageRoot, APP_DIR);
-
-  // Write version marker
-  fs.writeFileSync(versionFile, currentVersion);
-
-  console.log(`  ${fmt.success(`App files copied to ${fmt.dim(APP_DIR)}`)}`);
-
-  // Install dependencies
-  console.log(`  ${fmt.dim('▸ Installing dependencies (this may take a minute)...')}`);
-
-  try {
-    execSync('npm install --omit=dev', {
-      cwd: APP_DIR,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 120000,
-    });
-    console.log(`  ${fmt.success('Dependencies installed')}`);
-  } catch (err) {
-    console.log(`  ${fmt.error('Failed to install dependencies')}`);
-    console.log(`  ${err.stderr ? err.stderr.toString() : err.message}`);
-    process.exit(1);
-  }
-
-  return APP_DIR;
-}
-
-// ── Spawn helper (cross-platform, no shell) ────────────────────────────
-function spawnNext(args, cwd, stdio) {
-  // Always use node + module path — works on Windows, macOS, and Linux
-  // (node_modules/.bin/next is a .cmd on Windows, can't spawn without shell)
-  const nextEntry = path.join(cwd, 'node_modules', 'next', 'dist', 'bin', 'next');
-  return spawn(process.execPath, [nextEntry, ...args], { cwd, stdio });
 }
 
 // ── Server Startup ──────────────────────────────────────────────────────
@@ -472,34 +418,26 @@ function startServer({ email, port, authtoken, noTunnel }) {
   console.log(`  ${fmt.bold('🔧 Starting up...')}`);
   console.log('');
 
-  // Prepare working directory (handles npx case)
-  const projectRoot = prepareWorkingDirectory();
+  const packageRoot = getPackageRoot();
 
-  // ── Build ─────────────────────────────────────────────────────────
-  process.stdout.write(`  ${fmt.dim('▸ Building Next.js app...')}`);
+  if (isPrebuilt()) {
+    // ── Pre-built standalone mode (npx / published package) ─────
+    console.log(`  ${fmt.success('Using pre-built app (no build needed)')}`);
 
-  const build = spawnNext(['build'], projectRoot, ['ignore', 'pipe', 'pipe']);
+    // Ensure static assets are in the right place
+    setupStandaloneAssets();
 
-  let buildOutput = '';
-  build.stdout.on('data', (data) => { buildOutput += data.toString(); });
-  build.stderr.on('data', (data) => { buildOutput += data.toString(); });
-
-  build.on('close', (code) => {
-    clearLine();
-
-    if (code !== 0) {
-      console.log(`  ${fmt.error('Build failed!')}`);
-      console.log('');
-      console.log(buildOutput);
-      process.exit(1);
-    }
-
-    console.log(`  ${fmt.success('Build complete')}`);
-
-    // ── Start Next.js ─────────────────────────────────────────────
+    // Start the standalone server directly
     process.stdout.write(`  ${fmt.dim('▸ Starting server on port ' + port + '...')}`);
 
-    const nextServer = spawnNext(['start', '-p', port], projectRoot, ['ignore', 'pipe', 'pipe']);
+    const standaloneDir = getStandaloneDir();
+    const serverJs = path.join(standaloneDir, 'server.js');
+
+    const nextServer = spawn(process.execPath, [serverJs], {
+      cwd: standaloneDir,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PORT: port, HOSTNAME: '0.0.0.0' },
+    });
 
     let serverStarted = false;
 
@@ -511,7 +449,7 @@ function startServer({ email, port, authtoken, noTunnel }) {
         console.log(`  ${fmt.success('Server running on port ' + port)}`);
 
         if (!noTunnel) {
-          startTunnel({ port, email, authtoken, projectRoot });
+          startTunnel({ port, email, authtoken, projectRoot: packageRoot });
         } else {
           printLocalOnly(port);
         }
@@ -526,7 +464,7 @@ function startServer({ email, port, authtoken, noTunnel }) {
     });
 
     nextServer.on('close', (exitCode) => {
-      console.log(`\n  ${fmt.dim('Next.js server stopped.')}`);
+      console.log(`\n  ${fmt.dim('Server stopped.')}`);
       process.exit(exitCode);
     });
 
@@ -548,13 +486,172 @@ function startServer({ email, port, authtoken, noTunnel }) {
         clearLine();
         console.log(`  ${fmt.success('Server likely running on port ' + port)}`);
         if (!noTunnel) {
-          startTunnel({ port, email, authtoken, projectRoot });
+          startTunnel({ port, email, authtoken, projectRoot: packageRoot });
         } else {
           printLocalOnly(port);
         }
       }
     }, 8000);
-  });
+
+  } else {
+    // ── Dev mode (running from source, not published) ────────────
+    console.log(`  ${fmt.dim('No pre-built app found, building from source...')}`);
+
+    const nextEntry = path.join(packageRoot, 'node_modules', 'next', 'dist', 'bin', 'next');
+
+    // Build
+    process.stdout.write(`  ${fmt.dim('▸ Building Next.js app...')}`);
+
+    const build = spawn(process.execPath, [nextEntry, 'build'], {
+      cwd: packageRoot,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let buildOutput = '';
+    build.stdout.on('data', (data) => { buildOutput += data.toString(); });
+    build.stderr.on('data', (data) => { buildOutput += data.toString(); });
+
+    build.on('close', (code) => {
+      clearLine();
+
+      if (code !== 0) {
+        console.log(`  ${fmt.error('Build failed!')}`);
+        console.log('');
+        console.log(buildOutput);
+        process.exit(1);
+      }
+
+      console.log(`  ${fmt.success('Build complete')}`);
+
+      // Start using standalone if it was just built
+      if (isPrebuilt()) {
+        setupStandaloneAssets();
+        const standaloneDir = getStandaloneDir();
+        const serverJs = path.join(standaloneDir, 'server.js');
+
+        process.stdout.write(`  ${fmt.dim('▸ Starting server on port ' + port + '...')}`);
+
+        const nextServer = spawn(process.execPath, [serverJs], {
+          cwd: standaloneDir,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, PORT: port, HOSTNAME: '0.0.0.0' },
+        });
+
+        let serverStarted = false;
+
+        nextServer.stdout.on('data', (data) => {
+          const line = data.toString();
+          if (!serverStarted && (line.includes('Ready') || line.includes('started') || line.includes(port))) {
+            serverStarted = true;
+            clearLine();
+            console.log(`  ${fmt.success('Server running on port ' + port)}`);
+
+            if (!noTunnel) {
+              startTunnel({ port, email, authtoken, projectRoot: packageRoot });
+            } else {
+              printLocalOnly(port);
+            }
+          }
+        });
+
+        nextServer.stderr.on('data', (data) => {
+          const line = data.toString().trim();
+          if (line && line.toLowerCase().includes('error')) {
+            console.log(`  ${fmt.dim('[next]')} ${line}`);
+          }
+        });
+
+        nextServer.on('close', (exitCode) => {
+          console.log(`\n  ${fmt.dim('Server stopped.')}`);
+          process.exit(exitCode);
+        });
+
+        const cleanup = () => {
+          console.log('');
+          console.log(`  ${fmt.dim('👋 Shutting down...')}`);
+          nextServer.kill();
+          process.exit(0);
+        };
+
+        process.on('SIGINT', cleanup);
+        process.on('SIGTERM', cleanup);
+
+        setTimeout(() => {
+          if (!serverStarted) {
+            serverStarted = true;
+            clearLine();
+            console.log(`  ${fmt.success('Server likely running on port ' + port)}`);
+            if (!noTunnel) {
+              startTunnel({ port, email, authtoken, projectRoot: packageRoot });
+            } else {
+              printLocalOnly(port);
+            }
+          }
+        }, 8000);
+
+      } else {
+        // Fallback: use next start
+        process.stdout.write(`  ${fmt.dim('▸ Starting server on port ' + port + '...')}`);
+
+        const nextServer = spawn(process.execPath, [nextEntry, 'start', '-p', port], {
+          cwd: packageRoot,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+
+        let serverStarted = false;
+
+        nextServer.stdout.on('data', (data) => {
+          const line = data.toString();
+          if (!serverStarted && (line.includes('Ready') || line.includes('started') || line.includes(port))) {
+            serverStarted = true;
+            clearLine();
+            console.log(`  ${fmt.success('Server running on port ' + port)}`);
+
+            if (!noTunnel) {
+              startTunnel({ port, email, authtoken, projectRoot: packageRoot });
+            } else {
+              printLocalOnly(port);
+            }
+          }
+        });
+
+        nextServer.stderr.on('data', (data) => {
+          const line = data.toString().trim();
+          if (line && line.toLowerCase().includes('error')) {
+            console.log(`  ${fmt.dim('[next]')} ${line}`);
+          }
+        });
+
+        nextServer.on('close', (exitCode) => {
+          console.log(`\n  ${fmt.dim('Next.js server stopped.')}`);
+          process.exit(exitCode);
+        });
+
+        const cleanup = () => {
+          console.log('');
+          console.log(`  ${fmt.dim('👋 Shutting down...')}`);
+          nextServer.kill();
+          process.exit(0);
+        };
+
+        process.on('SIGINT', cleanup);
+        process.on('SIGTERM', cleanup);
+
+        setTimeout(() => {
+          if (!serverStarted) {
+            serverStarted = true;
+            clearLine();
+            console.log(`  ${fmt.success('Server likely running on port ' + port)}`);
+            if (!noTunnel) {
+              startTunnel({ port, email, authtoken, projectRoot: packageRoot });
+            } else {
+              printLocalOnly(port);
+            }
+          }
+        }, 8000);
+      }
+    });
+  }
 }
 
 // ── Start ngrok Tunnel ──────────────────────────────────────────────────
