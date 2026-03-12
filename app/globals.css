@@ -164,7 +164,8 @@ html, body {
   align-items: center;
   flex-shrink: 1;
   min-width: 0;
-  position: relative;
+  /* static on mobile so dropdowns position relative to .header (full-width) */
+  position: static;
 }
 .icon-btn {
   width: 34px;
@@ -575,7 +576,8 @@ html, body {
 .mode-label { font-weight: 500; letter-spacing: 0.02em; }
 
 /* ── Window Selector & Management ── */
-.window-selector-wrapper { position: relative; overflow: visible; }
+/* static on mobile so dropdown positions relative to .header */
+.window-selector-wrapper { position: static; overflow: visible; }
 .window-selector-btn {
   display: flex;
   align-items: center;
@@ -609,14 +611,13 @@ html, body {
 .cdp-indicator.active { background: var(--success); box-shadow: 0 0 6px rgba(52, 211, 153, 0.5); animation: pulse-dot 2s ease-in-out infinite; }
 .cdp-indicator.inactive { background: var(--error); opacity: 0.6; }
 
-/* Window dropdown — absolute positioning (fixed breaks under backdrop-filter) */
+/* Window dropdown — full-width centered on mobile, positioned on tablet+ */
 .window-dropdown {
   position: absolute;
   top: 100%;
-  right: 0;
-  left: auto;
-  width: calc(100vw - 20px);
-  max-width: 340px;
+  left: 10px;
+  right: 10px;
+  width: auto;
   max-height: calc(100dvh - var(--header-height) - 20px);
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
@@ -982,14 +983,13 @@ html, body {
   max-width: 70px;
 }
 
-/* Conversation dropdown — absolute positioning (fixed breaks under backdrop-filter) */
+/* Conversation dropdown — full-width centered on mobile, positioned on tablet+ */
 .conv-dropdown {
   position: absolute;
   top: 100%;
-  right: 0;
-  left: auto;
-  width: calc(100vw - 20px);
-  max-width: 340px;
+  left: 10px;
+  right: 10px;
+  width: auto;
   max-height: calc(100dvh - var(--header-height) - 20px);
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
@@ -1136,7 +1136,9 @@ html, body {
   .logo { width: 34px; height: 34px; }
   .header-title h1 { font-size: 16px; }
   .header-subtitle { font-size: 11px; max-width: 200px; }
-  .header-right { gap: 4px; }
+  /* Restore positioned parents for dropdowns on tablet+ */
+  .header-right { gap: 4px; position: relative; }
+  .window-selector-wrapper { position: relative; }
   .icon-btn { width: 36px; height: 36px; }
 
   .messages-area { padding: 20px 16px; }
@@ -1168,13 +1170,17 @@ html, body {
   .conv-selector-btn { max-width: 160px; padding: 4px 8px; }
   .conv-selector-btn > span { max-width: 110px; }
 
-  /* Dropdowns: widen on tablet+ */
+  /* Dropdowns: narrow and right-aligned on tablet+ */
   .window-dropdown {
+    left: auto;
+    right: 0;
     width: 340px;
     max-height: 440px;
   }
 
   .conv-dropdown {
+    left: auto;
+    right: 0;
     width: 340px;
     max-height: 380px;
   }
