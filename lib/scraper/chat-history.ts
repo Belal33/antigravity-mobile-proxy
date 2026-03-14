@@ -104,6 +104,10 @@ export async function getChatHistory(ctx: ProxyContext): Promise<ChatHistory> {
 
       const clone = el.cloneNode(true) as Element;
       clone.querySelectorAll('style, script').forEach((n) => n.remove());
+      // Remove Antigravity interactive UI chrome (@ mention SVGs, copy buttons, etc.)
+      clone.querySelectorAll(
+        'svg.cursor-pointer, [class*="cursor-pointer"][class*="opacity-70"], button[class*="opacity-70"]'
+      ).forEach((n) => n.remove());
       const html = (clone as HTMLElement).innerHTML?.trim();
       if (!html) continue;
 

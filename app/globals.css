@@ -1087,6 +1087,12 @@ html, body {
   white-space: nowrap;
 }
 .agent-response th { background: var(--bg-tertiary); font-weight: 600; }
+/* Safety net: hide leaked Antigravity IDE interactive elements (@mention SVGs, copy buttons) */
+.agent-response svg[class*="cursor-pointer"],
+.agent-response [class*="cursor-pointer"][class*="opacity-70"],
+.agent-response button[class*="opacity-70"] { display: none !important; }
+/* Constrain any stray SVGs that don't have explicit sizing */
+.agent-response svg:not([width]):not([class]) { max-width: 1.2em; max-height: 1.2em; }
 
 /* ══════════════════════════════════════════════
    TABLET — ≥ 480px (landscape phones, small tablets)

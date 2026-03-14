@@ -656,6 +656,8 @@ export async function getFullAgentState(ctx: ProxyContext): Promise<AgentState> 
     for (const block of notifyBlocks) {
       const clone = block.cloneNode(true) as Element;
       clone.querySelectorAll('style, script').forEach((el) => el.remove());
+      // Remove Antigravity interactive UI elements (@ mention buttons, copy buttons, etc.)
+      clone.querySelectorAll('svg.cursor-pointer, [class*="cursor-pointer"][class*="opacity-70"], button[class*="opacity-70"]').forEach((el) => el.remove());
       const html = (clone as HTMLElement).innerHTML?.trim();
       if (html) notifications.push(html);
     }
@@ -681,6 +683,13 @@ export async function getFullAgentState(ctx: ProxyContext): Promise<AgentState> 
     for (const block of finalBlocks) {
       const clone = block.cloneNode(true) as Element;
       clone.querySelectorAll('style, script').forEach((el) => el.remove());
+      // Remove Antigravity interactive UI chrome elements:
+      // - SVGs with cursor-pointer (@ mention, copy icons near code blocks)
+      // - Elements with opacity-70 hover:opacity-100 pattern (interactive buttons)
+      // - Standalone action buttons that are part of the IDE, not the response
+      clone.querySelectorAll(
+        'svg.cursor-pointer, [class*="cursor-pointer"][class*="opacity-70"], button[class*="opacity-70"]'
+      ).forEach((el) => el.remove());
       const html = (clone as HTMLElement).innerHTML?.trim();
       if (html) responses.push(html);
     }
