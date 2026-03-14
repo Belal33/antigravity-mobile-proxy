@@ -3,19 +3,16 @@
 import type { SSEStep } from '@/lib/types';
 import ToolCallCard from './tool-call-card';
 import ThinkingBlock from './thinking-block';
-import HITLDialog from './hitl-dialog';
 import TypingIndicator from './typing-indicator';
 
 interface AgentMessageProps {
   content: string;
   steps: SSEStep[];
   isStreaming: boolean;
-  onApprove: () => void;
-  onReject: () => void;
   onRetry?: () => void;
 }
 
-export default function AgentMessage({ content, steps, isStreaming, onApprove, onReject, onRetry }: AgentMessageProps) {
+export default function AgentMessage({ content, steps, isStreaming, onRetry }: AgentMessageProps) {
   return (
     <div className={`agent-message ${isStreaming ? 'streaming' : ''}`}>
       <div className="agent-steps">
@@ -26,7 +23,9 @@ export default function AgentMessage({ content, steps, isStreaming, onApprove, o
             case 'tool_call':
               return <ToolCallCard key={`step-${i}`} data={step.data} />;
             case 'hitl':
-              return <HITLDialog key={`step-${i}`} onApprove={onApprove} onReject={onReject} />;
+              // HITL is handled via footerButtons on tool call cards directly.
+              // No separate modal needed.
+              return null;
             case 'file_change':
               return (
                 <div key={`step-${i}`} className="file-change-indicator">

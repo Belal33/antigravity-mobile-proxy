@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import { getIdeConversations } from '@/lib/scraper/ide-conversations';
+import { filterConversationsByWorkspace } from '@/lib/scraper/workspace-filter';
 
 export const dynamic = 'force-dynamic';
 
@@ -182,7 +183,11 @@ export async function GET() {
         conversations[0].active = true;
     }
 
-    return NextResponse.json({ conversations });
+    // Filter conversations to only show those related to the active window's project
+    const activeWindowTitle = ctx.allWorkbenches[ctx.activeWindowIdx]?.title;
+    const filtered = filterConversationsByWorkspace(conversations, activeWindowTitle);
+
+    return NextResponse.json({ conversations: filtered });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

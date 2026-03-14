@@ -117,8 +117,25 @@ export function useChat() {
     const { type, ...data } = payload;
 
     switch (type) {
-      case 'thinking':
       case 'tool_call':
+        // Update existing tool call in-place, or append if new
+        setCurrentSteps(prev => {
+          const existingIdx = prev.findIndex(
+            s => s.type === 'tool_call' && s.data?.id === data.id
+          );
+          let updated;
+          if (existingIdx >= 0) {
+            updated = [...prev];
+            updated[existingIdx] = { type, data };
+          } else {
+            updated = [...prev, { type, data }];
+          }
+          currentStepsRef.current = updated;
+          return updated;
+        });
+        break;
+
+      case 'thinking':
       case 'hitl':
       case 'file_change':
       case 'error':

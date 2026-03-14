@@ -50,8 +50,6 @@ export default function ChatContainer() {
             currentSteps={chat.currentSteps}
             currentResponse={chat.currentResponse}
             isStreaming={chat.isStreaming}
-            onApprove={chat.approve}
-            onReject={chat.reject}
             onRetry={async () => {
               try {
                 // To retry, we ping health and maybe trigger a status update

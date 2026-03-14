@@ -124,12 +124,22 @@ export async function getFullAgentState(ctx: ProxyContext): Promise<AgentState> 
           }
         }
         
-        // Let the stop state win if both mistakenly present, otherwise send state wins
+        // Detection logic:
+        // - If stop button found → definitely running
+        // - If send button found → definitely idle
+        // - If NEITHER found (send button removed from DOM) → running
+        //   Antigravity removes the send button entirely while the agent is
+        //   active; no stop icon replaces it. The wrapper drops from 4 to 3
+        //   buttons (Plus, Mode, Mic — no Send).
         if (hasStop) {
           isRunning = true;
           buttonStateDefinitive = true;
         } else if (hasSend) {
           isRunning = false;
+          buttonStateDefinitive = true;
+        } else {
+          // Send button absent from wrapper — agent is running
+          isRunning = true;
           buttonStateDefinitive = true;
         }
       }
@@ -197,14 +207,25 @@ export async function getFullAgentState(ctx: ProxyContext): Promise<AgentState> 
     const scopeEl = lastTurn || panel;
 
     // HITL button detection helper
+    // These are REAL approval/rejection actions from the agent.
+    // Excludes Antigravity workspace-chrome buttons like 'Relocate',
+    // 'Ask every time' which appear on every tool call for file location
+    // preferences and are NOT actual HITL approval actions.
     const HITL_WORDS = [
       'run', 'proceed', 'approve', 'allow', 'yes', 'accept',
       'continue', 'save', 'confirm', 'deny', 'reject', 'cancel', 'no',
-      'allow once', 'allow this conversation', 'ask every time', 'relocate',
+      'allow once', 'allow this conversation',
+    ];
+    // Workspace-chrome buttons that should NEVER be treated as HITL
+    const NON_HITL_WORDS = [
+      'relocate', 'ask every time', 'show in explorer',
+      'open in editor', 'copy path', 'reveal',
     ];
     const isHitlAction = (text: string) => {
       if (!text) return false;
       const lower = text.trim().toLowerCase();
+      // Explicitly exclude workspace-chrome buttons first
+      if (NON_HITL_WORDS.some((w) => lower === w || lower.startsWith(w))) return false;
       return HITL_WORDS.some((w) => lower === w || lower.startsWith(w));
     };
 
@@ -421,25 +442,21 @@ export async function getFullAgentState(ctx: ProxyContext): Promise<AgentState> 
 
         let allRowBtns = Array.from(rowEl.querySelectorAll('button'));
 
-        let ancestor: HTMLElement | null = rowEl.parentElement;
-        let depth = 0;
-        const foundPermBtns: HTMLButtonElement[] = [];
-        while (ancestor && depth < 5) {
-          const siblingBtns = Array.from(
-            ancestor.querySelectorAll('button')
+        // Check immediately adjacent siblings for HITL buttons
+        // (e.g., a permission bar rendered right after the tool row).
+        // Do NOT walk up to shared ancestors — that picks up buttons
+        // belonging to completely different tool calls.
+        const nextSib = rowEl.nextElementSibling;
+        if (nextSib) {
+          const sibBtns = Array.from(
+            nextSib.querySelectorAll('button')
           ) as HTMLButtonElement[];
-          for (const btn of siblingBtns) {
+          for (const btn of sibBtns) {
             const t = (btn.textContent || '').trim().toLowerCase();
-            if (isHitlAction(t) && !foundPermBtns.includes(btn)) {
-              foundPermBtns.push(btn);
+            if (isHitlAction(t)) {
+              allRowBtns.push(btn);
             }
           }
-          if (foundPermBtns.length > 0 && foundPermBtns.length < 5) {
-            allRowBtns = [...allRowBtns, ...foundPermBtns];
-            break;
-          }
-          ancestor = ancestor.parentElement;
-          depth++;
         }
 
         allRowBtns = [...new Set(allRowBtns)];

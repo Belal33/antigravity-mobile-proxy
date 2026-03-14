@@ -9,19 +9,17 @@ interface MessageListProps {
   currentSteps: SSEStep[];
   currentResponse: string;
   isStreaming: boolean;
-  onApprove: () => void;
-  onReject: () => void;
   onRetry?: () => void;
 }
 
-export default function MessageList({ messages, currentSteps, currentResponse, isStreaming, onApprove, onReject, onRetry }: MessageListProps) {
+export default function MessageList({ messages, currentSteps, currentResponse, isStreaming, onRetry }: MessageListProps) {
   return (
     <>
       {messages.map((msg, i) => (
         msg.role === 'user' ? (
           <UserMessage key={`msg-${i}`} content={msg.content} />
         ) : (
-          <AgentMessage key={`msg-${i}`} content={msg.content} steps={msg.steps || []} isStreaming={false} onApprove={onApprove} onReject={onReject} onRetry={onRetry} />
+          <AgentMessage key={`msg-${i}`} content={msg.content} steps={msg.steps || []} isStreaming={false} onRetry={onRetry} />
         )
       ))}
 
@@ -31,8 +29,6 @@ export default function MessageList({ messages, currentSteps, currentResponse, i
           content={currentResponse}
           steps={currentSteps}
           isStreaming={true}
-          onApprove={onApprove}
-          onReject={onReject}
           onRetry={onRetry}
         />
       )}

@@ -155,7 +155,7 @@ export async function POST(request: NextRequest) {
               if (contentChanged) {
                 doneCount = 0;
                 lastStableHTML = '';
-              } else if (Date.now() - ctx.lastActionTimestamp < 15000) {
+              } else if (Date.now() - ctx.lastActionTimestamp < 3000) {
                 doneCount = 0;
                 lastStableHTML = '';
               } else {
@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
                   (t.status || '').toLowerCase().includes('subagent') ||
                   (t.status || '').toLowerCase().includes('navigat')
               );
-              const requiredDoneCount = hasSubagentTools ? 20 : 10;
+              const requiredDoneCount = hasSubagentTools ? 8 : 4;
               if (doneCount >= requiredDoneCount) {
                 const finalResponse =
                   currState.notifications.length > 0

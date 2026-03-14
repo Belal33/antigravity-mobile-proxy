@@ -53,10 +53,25 @@ export function diffStates(prev: AgentState, curr: AgentState): SSEStep[] {
   }
 
   // HITL state changes
-  const prevHITL = prev.toolCalls.some((t) => t.hasCancelBtn);
-  const currHITL = curr.toolCalls.some((t) => t.hasCancelBtn);
+  // Detect actual HITL approval requests by checking for real approval/deny
+  // buttons in footerButtons — NOT hasCancelBtn which just means a command
+  // is still executing (the Cancel button on running tools).
+  const HITL_APPROVAL_WORDS = [
+    'run', 'proceed', 'approve', 'allow', 'yes', 'accept',
+    'deny', 'reject',
+    'allow once', 'allow this conversation',
+  ];
+  const hasApprovalButtons = (t: typeof curr.toolCalls[0]) =>
+    t.footerButtons &&
+    t.footerButtons.some((btn) =>
+      HITL_APPROVAL_WORDS.some(
+        (w) => btn.toLowerCase() === w || btn.toLowerCase().startsWith(w)
+      )
+    );
+  const prevHITL = prev.toolCalls.some(hasApprovalButtons);
+  const currHITL = curr.toolCalls.some(hasApprovalButtons);
   if (currHITL && !prevHITL) {
-    const hitlTool = curr.toolCalls.find((t) => t.hasCancelBtn);
+    const hitlTool = curr.toolCalls.find(hasApprovalButtons);
     events.push({
       type: 'hitl',
       data: { action: 'approval_required', tool: hitlTool } as any,
