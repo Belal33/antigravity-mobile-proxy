@@ -1,6 +1,6 @@
 {
   "name": "antigravity-mobile-proxy",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A web chat proxy for Antigravity IDE with ngrok OAuth tunnel support",
   "keywords": [
     "antigravity",
@@ -22,8 +22,8 @@
   ],
   "scripts": {
     "dev": "next dev -p 5555",
-    "postinstall": "node scripts/patch-next.js",
     "build": "next build",
+    "postbuild": "node scripts/patch-next.js",
     "start": "next start -p 5555",
     "tunnel": "node bin/cli.js",
     "lint": "next lint",
