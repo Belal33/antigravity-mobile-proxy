@@ -75,6 +75,69 @@ html, body {
 @keyframes hitlSlideIn { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes typingBounce { 0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
 @keyframes wm-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes shimmer {
+  0% { background-position: -300px 0; }
+  100% { background-position: 300px 0; }
+}
+@keyframes historyFadeIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── History Loading Skeleton ── */
+.history-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px 10px;
+  animation: historyFadeIn 0.4s ease-out;
+  max-width: 100%;
+}
+.history-loading-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.history-loading-header.right {
+  justify-content: flex-end;
+}
+.history-loading-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  background: var(--agent-bubble);
+  border: 1px solid var(--border-subtle);
+}
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.08) 40%,
+    rgba(255, 255, 255, 0.03) 80%
+  );
+  background-size: 300px 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: 6px;
+}
+.skeleton-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.skeleton-line {
+  height: 12px;
+  border-radius: 6px;
+}
+.history-loading-text {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding-top: 8px;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
 
 /* ══════════════════════════════════════════════
    MOBILE-FIRST BASE STYLES (< 480px)

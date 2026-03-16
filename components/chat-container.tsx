@@ -42,7 +42,37 @@ export default function ChatContainer() {
       />
 
       <main className="messages-area" role="log" aria-live="polite">
-        {chat.showWelcome ? (
+        {chat.isLoadingHistory ? (
+          <div className="history-loading">
+            <div className="history-loading-header">
+              <div className="skeleton-shimmer skeleton-avatar" />
+              <div className="skeleton-shimmer skeleton-line" style={{ width: '45%' }} />
+            </div>
+            <div className="history-loading-block">
+              <div className="skeleton-shimmer skeleton-line" style={{ width: '80%' }} />
+              <div className="skeleton-shimmer skeleton-line" style={{ width: '65%' }} />
+              <div className="skeleton-shimmer skeleton-line" style={{ width: '72%' }} />
+            </div>
+            <div className="history-loading-header right">
+              <div className="skeleton-shimmer skeleton-line" style={{ width: '35%' }} />
+            </div>
+            <div className="history-loading-block">
+              <div className="skeleton-shimmer skeleton-line" style={{ width: '90%' }} />
+              <div className="skeleton-shimmer skeleton-line" style={{ width: '55%' }} />
+              <div className="skeleton-shimmer skeleton-line" style={{ width: '68%' }} />
+              <div className="skeleton-shimmer skeleton-line" style={{ width: '40%' }} />
+            </div>
+            <div className="history-loading-header">
+              <div className="skeleton-shimmer skeleton-avatar" />
+              <div className="skeleton-shimmer skeleton-line" style={{ width: '50%' }} />
+            </div>
+            <div className="history-loading-block">
+              <div className="skeleton-shimmer skeleton-line" style={{ width: '75%' }} />
+              <div className="skeleton-shimmer skeleton-line" style={{ width: '60%' }} />
+            </div>
+            <p className="history-loading-text">Loading conversation history…</p>
+          </div>
+        ) : chat.showWelcome ? (
           <WelcomeScreen onQuickPrompt={chat.sendMessage} />
         ) : (
           <MessageList
@@ -52,7 +82,6 @@ export default function ChatContainer() {
             isStreaming={chat.isStreaming}
             onRetry={async () => {
               try {
-                // To retry, we ping health and maybe trigger a status update
                 await fetch('/api/v1/health');
                 window.location.reload(); 
               } catch { /* ignore */ }

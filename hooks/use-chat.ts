@@ -14,6 +14,7 @@ export function useChat() {
   const [statusText, setStatusText] = useState('Agent');
   const [statusState, setStatusState] = useState('connected');
   const [showWelcome, setShowWelcome] = useState(true);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [currentSteps, setCurrentSteps] = useState<SSEStep[]>([]);
   const [currentResponse, setCurrentResponse] = useState('');
   const [currentMode, setCurrentMode] = useState<'planning' | 'fast'>('planning');
@@ -38,14 +39,20 @@ export function useChat() {
   }, []);
 
   const fetchHistory = useCallback(async () => {
+    setIsLoadingHistory(true);
+    setMessages([]); // Clear existing messages immediately
     try {
       const res = await fetch(`${API_BASE}/chat/history`);
       const data = await res.json();
       if (data.turns && data.turns.length > 0) {
         setShowWelcome(false);
         setMessages(data.turns.map((t: any) => ({ role: t.role, content: t.content })));
+      } else {
+        setShowWelcome(true);
       }
-    } catch { /* ignore */ }
+    } catch { /* ignore */ } finally {
+      setIsLoadingHistory(false);
+    }
   }, []);
 
   const {
@@ -328,7 +335,7 @@ export function useChat() {
 
   return {
     messages, isStreaming, isConnected, statusText, statusState,
-    showWelcome, currentSteps, currentResponse, windows,
+    showWelcome, isLoadingHistory, currentSteps, currentResponse, windows,
     conversations, activeConversation, artifactFiles, artifactPanelOpen,
     currentMode, currentAgent, agents, isLoadingAgents,
     cdpStatus, recentProjects,

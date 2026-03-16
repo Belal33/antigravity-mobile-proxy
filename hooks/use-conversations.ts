@@ -105,17 +105,6 @@ export function useConversations(
     }
   }, [loadWindows, checkCdpStatus]);
 
-  const selectWindow = useCallback(async (idx: number) => {
-    try {
-      await fetch(`${API_BASE}/windows/select`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ index: idx }),
-      });
-      await loadWindows();
-    } catch { /* ignore */ }
-  }, [loadWindows]);
-
   const loadConversations = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/conversations`);
@@ -128,6 +117,25 @@ export function useConversations(
       }
     } catch { /* ignore */ }
   }, []);
+
+  const selectWindow = useCallback(async (idx: number) => {
+    try {
+      // Clear current chat and show welcome while we load the new window's history
+      setShowWelcome(true);
+      await fetch(`${API_BASE}/windows/select`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index: idx }),
+      });
+      await loadWindows();
+      // Fetch the new window's chat history
+      await fetchHistory();
+      // Refresh conversations list for the new window
+      await loadConversations();
+      // Notify parent (for artifact sync etc.)
+      onConversationSwitched?.();
+    } catch { /* ignore */ }
+  }, [loadWindows, fetchHistory, setShowWelcome, loadConversations, onConversationSwitched]);
 
   const selectConversation = useCallback(async (title: string) => {
     try {
