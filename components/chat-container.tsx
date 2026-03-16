@@ -67,6 +67,11 @@ export default function ChatContainer() {
         isStreaming={chat.isStreaming}
         currentMode={chat.currentMode}
         onToggleMode={chat.toggleMode}
+        currentAgent={chat.currentAgent}
+        agents={chat.agents}
+        isLoadingAgents={chat.isLoadingAgents}
+        onFetchAgents={chat.fetchAgentList}
+        onSwitchAgent={chat.switchAgent}
       />
 
       <ArtifactPanel

@@ -17,6 +17,9 @@ export function useChat() {
   const [currentSteps, setCurrentSteps] = useState<SSEStep[]>([]);
   const [currentResponse, setCurrentResponse] = useState('');
   const [currentMode, setCurrentMode] = useState<'planning' | 'fast'>('planning');
+  const [currentAgent, setCurrentAgent] = useState<string | null>(null);
+  const [agents, setAgents] = useState<{ name: string; active: boolean; description?: string }[]>([]);
+  const [isLoadingAgents, setIsLoadingAgents] = useState(false);
   
   const controllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -100,6 +103,46 @@ export function useChat() {
       setCurrentMode(currentMode); // Rollback on error
     }
   }, [currentMode]);
+
+  const fetchAgent = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/chat/agent`);
+      const data = await res.json();
+      if (data.agent) setCurrentAgent(data.agent);
+    } catch { /* ignore */ }
+  }, []);
+
+  const fetchAgentList = useCallback(async () => {
+    setIsLoadingAgents(true);
+    try {
+      const res = await fetch(`${API_BASE}/chat/agent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'list' }),
+      });
+      const data = await res.json();
+      if (data.agents) setAgents(data.agents);
+      if (data.currentAgent) setCurrentAgent(data.currentAgent);
+    } catch { /* ignore */ }
+    setIsLoadingAgents(false);
+  }, []);
+
+  const switchAgent = useCallback(async (agentName: string) => {
+    const prevAgent = currentAgent;
+    setCurrentAgent(agentName); // Optimistic update
+    try {
+      const res = await fetch(`${API_BASE}/chat/agent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'switch', agent: agentName }),
+      });
+      const data = await res.json();
+      if (data.agent) setCurrentAgent(data.agent);
+      else if (!data.success) setCurrentAgent(prevAgent); // Rollback
+    } catch {
+      setCurrentAgent(prevAgent); // Rollback on error
+    }
+  }, [currentAgent]);
 
   const checkHealth = useCallback(async () => {
     try {
@@ -271,6 +314,7 @@ export function useChat() {
     loadConversations();
     loadArtifacts();
     fetchMode();
+    fetchAgent();
     checkCdpStatus();
     loadRecentProjects();
 
@@ -278,7 +322,7 @@ export function useChat() {
     const healthTimer = setInterval(checkHealth, 30000);
     const cdpTimer = setInterval(checkCdpStatus, 15000);
     return () => { clearInterval(healthTimer); clearInterval(cdpTimer); };
-  }, [checkHealth, loadWindows, fetchHistory, loadConversations, loadArtifacts, fetchMode, checkCdpStatus, loadRecentProjects]);
+  }, [checkHealth, loadWindows, fetchHistory, loadConversations, loadArtifacts, fetchMode, fetchAgent, checkCdpStatus, loadRecentProjects]);
 
   useEffect(scrollToBottom, [messages, currentSteps, currentResponse, scrollToBottom]);
 
@@ -286,10 +330,12 @@ export function useChat() {
     messages, isStreaming, isConnected, statusText, statusState,
     showWelcome, currentSteps, currentResponse, windows,
     conversations, activeConversation, artifactFiles, artifactPanelOpen,
-    currentMode, cdpStatus, recentProjects,
+    currentMode, currentAgent, agents, isLoadingAgents,
+    cdpStatus, recentProjects,
     sendMessage, startNewChat, approve, reject,
     selectWindow, selectConversation, toggleArtifactPanel, openArtifactPanel,
-    toggleMode, startCdpServer, openNewWindow, closeWindowByIndex,
+    toggleMode, fetchAgentList, switchAgent,
+    startCdpServer, openNewWindow, closeWindowByIndex,
     messagesEndRef, setShowWelcome,
   };
 }

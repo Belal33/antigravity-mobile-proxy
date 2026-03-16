@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from 'react';
 import type { WindowInfo, ConversationInfo } from '@/lib/types';
 import type { CdpStatus, RecentProject } from '@/hooks/use-conversations';
-import ConversationSelector from './conversation-selector';
 
 interface HeaderProps {
   statusState: string;
@@ -54,10 +53,15 @@ export default function Header({
   }, [actionMessage]);
 
   const handleStartCdp = async () => {
+    // Use the most recent project directory, fall back to '.'
+    const projectDir = recentProjects.length > 0 ? recentProjects[0].path : '.';
+
     setIsStartingCdp(true);
     setActionMessage(null);
     try {
-      const result = await onStartCdp('.', false);
+      // killExisting=true to handle the Electron single-instance issue:
+      // existing non-CDP windows prevent the CDP server from starting
+      const result = await onStartCdp(projectDir, true);
       setActionMessage({
         text: result.message || (result.success ? 'CDP started!' : 'Failed to start CDP'),
         type: result.success ? 'success' : 'error',
@@ -120,12 +124,12 @@ export default function Header({
         </div>
       </div>
       <div className="header-right">
-        {/* Conversation Selector */}
-        <ConversationSelector
+        {/* Conversation Selector - commented out for now */}
+        {/* <ConversationSelector
           conversations={conversations}
           activeConversation={activeConversation}
           onSelect={onSelectConversation}
-        />
+        /> */}
 
         {/* Window Selector */}
         <div ref={wrapperRef} className={`window-selector-wrapper ${windowOpen ? 'open' : ''}`}>
