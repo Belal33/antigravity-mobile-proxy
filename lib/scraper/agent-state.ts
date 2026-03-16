@@ -80,67 +80,102 @@ export async function getFullAgentState(ctx: ProxyContext): Promise<AgentState> 
       const wrapper = inputArea.closest('.flex') || inputArea.parentElement?.parentElement || inputArea.parentElement;
       if (wrapper) {
         (window as any).__proxyInputBoxHTML = wrapper.outerHTML;
-        const inputBtns = wrapper.querySelectorAll('button');
         
-        let hasStop = false;
-        let hasSend = false;
+        // ── Priority check: look for the send/cancel element by data-tooltip-id.
+        // In current Antigravity versions, the send/cancel control is a <div>,
+        // NOT a <button>, with tooltip like "input-send-button-cancel-tooltip"
+        // or "input-send-button-tooltip".
+        const sendCancelEl = wrapper.querySelector('[data-tooltip-id*="send"]') ||
+                             wrapper.querySelector('[data-tooltip-id*="cancel"]');
         
-        for (const btn of inputBtns) {
-          const html = btn.innerHTML || '';
-          const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-          const text = (btn.textContent || '').trim().toLowerCase();
-          const tooltipId = (btn.getAttribute('data-tooltip-id') || '').toLowerCase();
+        if (sendCancelEl) {
+          const tooltipId = (sendCancelEl.getAttribute('data-tooltip-id') || '').toLowerCase();
+          const innerHtml = sendCancelEl.innerHTML || '';
           
-          // The send/stop button changes its tooltip and contents.
-          // We must be careful not to match 'lucide-square-slash' or other derived 
-          // square icons by ensuring 'lucide-square' is followed by a non-word character.
-          const isStopIcon = 
-            html.match(/lucide-square(?:[^a-z0-9-]|$)/i) || 
-            html.includes('lucide-circle-stop') || 
-            html.includes('lucide-octagon');
-
-          if (
-            isStopIcon ||
-            ariaLabel.includes('stop') ||
-            ariaLabel.includes('cancel') ||
-            text === 'stop' ||
-            tooltipId.includes('stop')
-          ) {
-            hasStop = true;
-          }
+          // When running: tooltip contains "cancel", inner HTML has a red/colored
+          // square (stop icon) like <div class="bg-red-500 ...rounded-xs">
+          const isCancelMode = tooltipId.includes('cancel') ||
+                               innerHtml.includes('bg-red') ||
+                               innerHtml.includes('rounded-xs') ||
+                               innerHtml.match(/lucide-square(?:[^a-z0-9-]|$)/i);
           
-          if (
-            html.includes('lucide-send') || 
-            html.includes('lucide-arrow-up') ||
-            html.includes('lucide-arrow-right') ||
-            html.includes('codicon-send') ||
-            html.includes('lucide-corner-down-left') ||
-            ariaLabel.includes('send') ||
-            ariaLabel.includes('submit') ||
-            text === 'send' ||
-            tooltipId.includes('send')
-          ) {
-            hasSend = true;
+          // When idle: tooltip is just "send" without "cancel", inner HTML has
+          // an arrow-up or send icon  
+          const isSendMode = !isCancelMode && (
+            tooltipId.includes('send') ||
+            innerHtml.includes('lucide-arrow-up') ||
+            innerHtml.includes('lucide-send')
+          );
+          
+          if (isCancelMode) {
+            isRunning = true;
+            buttonStateDefinitive = true;
+          } else if (isSendMode) {
+            isRunning = false;
+            buttonStateDefinitive = true;
           }
         }
-        
-        // Detection logic:
-        // - If stop button found → definitely running
-        // - If send button found → definitely idle
-        // - If NEITHER found (send button removed from DOM) → running
-        //   Antigravity removes the send button entirely while the agent is
-        //   active; no stop icon replaces it. The wrapper drops from 4 to 3
-        //   buttons (Plus, Mode, Mic — no Send).
-        if (hasStop) {
-          isRunning = true;
-          buttonStateDefinitive = true;
-        } else if (hasSend) {
-          isRunning = false;
-          buttonStateDefinitive = true;
-        } else {
-          // Send button absent from wrapper — agent is running
-          isRunning = true;
-          buttonStateDefinitive = true;
+
+        // ── Fallback: scan <button> elements in the wrapper
+        if (!buttonStateDefinitive) {
+          const inputBtns = wrapper.querySelectorAll('button');
+          
+          let hasStop = false;
+          let hasSend = false;
+          
+          for (const btn of inputBtns) {
+            const html = btn.innerHTML || '';
+            const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+            const text = (btn.textContent || '').trim().toLowerCase();
+            const tooltipId = (btn.getAttribute('data-tooltip-id') || '').toLowerCase();
+            
+            const isStopIcon = 
+              html.match(/lucide-square(?:[^a-z0-9-]|$)/i) || 
+              html.includes('lucide-circle-stop') || 
+              html.includes('lucide-octagon');
+
+            if (
+              isStopIcon ||
+              ariaLabel.includes('stop') ||
+              ariaLabel.includes('cancel') ||
+              text === 'stop' ||
+              tooltipId.includes('stop')
+            ) {
+              hasStop = true;
+            }
+            
+            if (
+              html.includes('lucide-send') || 
+              html.includes('lucide-arrow-up') ||
+              html.includes('lucide-arrow-right') ||
+              html.includes('codicon-send') ||
+              html.includes('lucide-corner-down-left') ||
+              ariaLabel.includes('send') ||
+              ariaLabel.includes('submit') ||
+              text === 'send' ||
+              tooltipId.includes('send')
+            ) {
+              hasSend = true;
+            }
+          }
+          
+          if (hasStop) {
+            isRunning = true;
+            buttonStateDefinitive = true;
+          } else if (hasSend) {
+            isRunning = false;
+            buttonStateDefinitive = true;
+          } else {
+            // Send button absent — check for div-based send/cancel element
+            const altSendEl = inputArea?.querySelector('[data-tooltip-id*="send"]');
+            if (altSendEl) {
+              const tip = (altSendEl.getAttribute('data-tooltip-id') || '').toLowerCase();
+              isRunning = tip.includes('cancel');
+            } else {
+              isRunning = true;
+            }
+            buttonStateDefinitive = true;
+          }
         }
       }
     }
