@@ -6,6 +6,7 @@ import WelcomeScreen from '@/components/welcome-screen';
 import MessageList from '@/components/message-list';
 import ChatInput from '@/components/chat-input';
 import ArtifactPanel from '@/components/artifact-panel';
+import ChangesPanel from '@/components/changes-panel';
 import { useEffect } from 'react';
 
 export default function ChatContainer() {
@@ -35,7 +36,6 @@ export default function ChatContainer() {
         onSelectWindow={chat.selectWindow}
         onSelectConversation={chat.selectConversation}
         onNewChat={chat.startNewChat}
-        onToggleArtifacts={chat.toggleArtifactPanel}
         onStartCdp={chat.startCdpServer}
         onOpenWindow={chat.openNewWindow}
         onCloseWindow={chat.closeWindowByIndex}
@@ -101,6 +101,12 @@ export default function ChatContainer() {
         isLoadingAgents={chat.isLoadingAgents}
         onFetchAgents={chat.fetchAgentList}
         onSwitchAgent={chat.switchAgent}
+        onToggleArtifacts={chat.toggleArtifactPanel}
+        artifactCount={chat.artifactFiles.length}
+        artifactPanelOpen={chat.artifactPanelOpen}
+        onToggleChanges={chat.toggleChangesPanel}
+        changesCount={chat.changeFiles.length}
+        changesPanelOpen={chat.changesPanelOpen}
       />
 
       <ArtifactPanel
@@ -108,6 +114,12 @@ export default function ChatContainer() {
         onClose={chat.toggleArtifactPanel}
         activeConversation={chat.activeConversation}
         files={chat.artifactFiles}
+      />
+
+      <ChangesPanel
+        open={chat.changesPanelOpen}
+        onClose={chat.toggleChangesPanel}
+        changes={chat.changeFiles}
       />
     </div>
   );

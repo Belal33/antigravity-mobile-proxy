@@ -16,22 +16,35 @@ export default function ArtifactPanel({ open, onClose, activeConversation, files
   const [loading, setLoading] = useState(false);
 
   const formatSize = (bytes: number) => {
+    if (bytes <= 0) return '';
     if (bytes < 1024) return `${bytes}B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
   };
 
   const formatTime = (mtime: string) => {
-    const d = new Date(mtime);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' · ' + d.toLocaleDateString();
+    // Handle ISO dates
+    if (mtime.includes('T') || mtime.includes('-')) {
+      const d = new Date(mtime);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' · ' + d.toLocaleDateString();
+      }
+    }
+    // Already formatted (e.g., "Mar 10 11:21 PM") — pass through
+    return mtime;
   };
 
+  /** Open a file artifact (only for actual files with extensions) */
   const openFile = async (fileName: string) => {
-    if (!activeConversation) return;
     setLoading(true);
     setViewingFile(fileName);
     try {
       const res = await fetch(`/api/v1/artifacts/active/${encodeURIComponent(fileName)}`);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        setFileContent(`Error: ${errorData.error || res.statusText}`);
+        return;
+      }
       const text = await res.text();
       setFileContent(text);
     } catch (e: any) {
@@ -41,12 +54,31 @@ export default function ArtifactPanel({ open, onClose, activeConversation, files
     }
   };
 
-  const fileIcon = (name: string) => {
-    if (name.endsWith('.md')) return '📄';
-    if (name.endsWith('.json')) return '📋';
-    if (name.endsWith('.ts') || name.endsWith('.tsx')) return '📘';
-    if (name.endsWith('.css')) return '🎨';
-    return '📁';
+  const isOpenable = (f: ArtifactFile) => {
+    // A file is openable if it has a file extension
+    return f.isFile !== false && /\.\w{1,5}$/.test(f.name);
+  };
+
+  const fileIcon = (f: ArtifactFile) => {
+    if (isOpenable(f)) {
+      const name = f.name;
+      if (name.endsWith('.md')) return '📄';
+      if (name.endsWith('.json')) return '📋';
+      if (name.endsWith('.ts') || name.endsWith('.tsx')) return '📘';
+      if (name.endsWith('.css')) return '🎨';
+      if (name.endsWith('.js') || name.endsWith('.jsx')) return '📜';
+      return '📄';
+    }
+    // Non-file artifact (IDE-managed, like screenshots, images, etc.)
+    return '🖼️';
+  };
+
+  const handleItemClick = (f: ArtifactFile) => {
+    if (isOpenable(f)) {
+      openFile(f.name);
+    }
+    // Non-file artifacts can't be opened in the proxy
+    // They are IDE-managed (screenshots, images, etc.)
   };
 
   return (
@@ -69,7 +101,13 @@ export default function ArtifactPanel({ open, onClose, activeConversation, files
             {activeConversation.title || 'Untitled'}
           </div>
           <div style={{ fontSize: '10px', fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-muted)' }}>
-            {files.length} file{files.length !== 1 ? 's' : ''}
+            {files.length} artifact{files.length !== 1 ? 's' : ''}
+          </div>
+        </div>
+      ) : files.length > 0 ? (
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-subtle)', background: 'rgba(99,102,241,0.04)' }}>
+          <div style={{ fontSize: '10px', fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-muted)' }}>
+            {files.length} artifact{files.length !== 1 ? 's' : ''}
           </div>
         </div>
       ) : (
@@ -112,8 +150,14 @@ export default function ArtifactPanel({ open, onClose, activeConversation, files
       ) : (
         <div className="artifact-file-list">
           {files.map(f => (
-            <button key={f.name} className="artifact-file-item" onClick={() => openFile(f.name)}>
-              <span className="artifact-file-icon">{fileIcon(f.name)}</span>
+            <button
+              key={f.name}
+              className={`artifact-file-item ${!isOpenable(f) ? 'non-file' : ''}`}
+              onClick={() => handleItemClick(f)}
+              disabled={!isOpenable(f)}
+              title={isOpenable(f) ? `Open ${f.name}` : `${f.name} (IDE artifact — view in Antigravity)`}
+            >
+              <span className="artifact-file-icon">{fileIcon(f)}</span>
               <div style={{ flex: 1, overflow: 'hidden' }}>
                 <div className="artifact-file-name">{f.name}</div>
                 <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{formatTime(f.mtime)}</div>
@@ -121,7 +165,7 @@ export default function ArtifactPanel({ open, onClose, activeConversation, files
               <span className="artifact-file-size">{formatSize(f.size)}</span>
             </button>
           ))}
-          {files.length === 0 && activeConversation && (
+          {files.length === 0 && (
             <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>
               No artifacts in this conversation
             </div>

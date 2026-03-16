@@ -18,11 +18,19 @@ interface ChatInputProps {
   isLoadingAgents: boolean;
   onFetchAgents: () => void;
   onSwitchAgent: (agentName: string) => void;
+  onToggleArtifacts: () => void;
+  artifactCount: number;
+  artifactPanelOpen: boolean;
+  onToggleChanges: () => void;
+  changesCount: number;
+  changesPanelOpen: boolean;
 }
 
 export default function ChatInput({
   onSend, isStreaming, currentMode, onToggleMode,
   currentAgent, agents, isLoadingAgents, onFetchAgents, onSwitchAgent,
+  onToggleArtifacts, artifactCount, artifactPanelOpen,
+  onToggleChanges, changesCount, changesPanelOpen,
 }: ChatInputProps) {
   const [value, setValue] = useState('');
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
@@ -164,6 +172,42 @@ export default function ChatInput({
         >
           <span className="mode-icon">{currentMode === 'planning' ? '📋' : '⚡'}</span>
           <span className="mode-label">{currentMode === 'planning' ? 'Plan' : 'Fast'}</span>
+        </button>
+
+        {/* Artifacts Toggle */}
+        <button
+          className={`artifact-toggle-btn ${artifactPanelOpen ? 'active' : ''}`}
+          onClick={onToggleArtifacts}
+          title={`Artifacts${artifactCount > 0 ? ` (${artifactCount})` : ''}`}
+          aria-label="Toggle artifacts panel"
+          type="button"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+          </svg>
+          {artifactCount > 0 && (
+            <span className="artifact-badge">{artifactCount}</span>
+          )}
+        </button>
+
+        {/* Changes Overview Toggle */}
+        <button
+          className={`changes-toggle-btn ${changesPanelOpen ? 'active' : ''}`}
+          onClick={onToggleChanges}
+          title={`Changes${changesCount > 0 ? ` (${changesCount})` : ''}`}
+          aria-label="Toggle changes panel"
+          type="button"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+          </svg>
+          {changesCount > 0 && (
+            <span className="changes-badge">{changesCount}</span>
+          )}
         </button>
 
         <span className="toolbar-agent-name" id="model-info">{currentAgent || ''}</span>

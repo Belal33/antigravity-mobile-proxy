@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useConversations } from './use-conversations';
 import { useArtifacts } from './use-artifacts';
+import { useChanges } from './use-changes';
 import type { ChatMessage, SSEStep } from '@/lib/types';
 
 const API_BASE = '/api/v1';
@@ -63,11 +64,19 @@ export function useChat() {
     loadArtifacts
   } = useArtifacts();
 
+  const {
+    changeFiles,
+    changesPanelOpen,
+    toggleChangesPanel,
+    loadChanges,
+  } = useChanges();
+
   // Auto-open artifact panel and refresh files when a conversation switch completes
   const handleConversationSwitched = useCallback(() => {
     openArtifactPanel();
     loadArtifacts();
-  }, [openArtifactPanel, loadArtifacts]);
+    loadChanges();
+  }, [openArtifactPanel, loadArtifacts, loadChanges]);
 
   const {
     windows,
@@ -337,10 +346,12 @@ export function useChat() {
     messages, isStreaming, isConnected, statusText, statusState,
     showWelcome, isLoadingHistory, currentSteps, currentResponse, windows,
     conversations, activeConversation, artifactFiles, artifactPanelOpen,
+    changeFiles, changesPanelOpen,
     currentMode, currentAgent, agents, isLoadingAgents,
     cdpStatus, recentProjects,
     sendMessage, startNewChat, approve, reject,
     selectWindow, selectConversation, toggleArtifactPanel, openArtifactPanel,
+    toggleChangesPanel,
     toggleMode, fetchAgentList, switchAgent,
     startCdpServer, openNewWindow, closeWindowByIndex,
     messagesEndRef, setShowWelcome,

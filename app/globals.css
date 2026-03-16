@@ -657,6 +657,228 @@ html, body {
 .mode-icon { font-size: 12px; line-height: 1; }
 .mode-label { font-weight: 500; letter-spacing: 0.02em; }
 
+/* ── Artifact Toggle Button (Input Toolbar) ── */
+.artifact-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--transition-smooth);
+  flex-shrink: 0;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 32px;
+  position: relative;
+}
+.artifact-toggle-btn:hover {
+  border-color: var(--border-active);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.artifact-toggle-btn:active { transform: scale(0.95); }
+.artifact-toggle-btn.active {
+  border-color: rgba(168, 85, 247, 0.4);
+  background: rgba(168, 85, 247, 0.1);
+  color: #c4b5fd;
+}
+.artifact-toggle-btn.active:hover {
+  border-color: rgba(168, 85, 247, 0.6);
+  background: rgba(168, 85, 247, 0.18);
+  color: #ddd6fe;
+}
+.artifact-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: rgba(168, 85, 247, 0.25);
+  color: #c4b5fd;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1;
+}
+.artifact-toggle-btn.active .artifact-badge {
+  background: rgba(168, 85, 247, 0.35);
+  color: #e9d5ff;
+}
+
+/* ── Changes Toggle Button (Input Toolbar) ── */
+.changes-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--transition-smooth);
+  flex-shrink: 0;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 32px;
+  position: relative;
+}
+.changes-toggle-btn:hover {
+  border-color: var(--border-active);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.changes-toggle-btn:active { transform: scale(0.95); }
+.changes-toggle-btn.active {
+  border-color: rgba(52, 211, 153, 0.4);
+  background: rgba(52, 211, 153, 0.1);
+  color: #6ee7b7;
+}
+.changes-toggle-btn.active:hover {
+  border-color: rgba(52, 211, 153, 0.6);
+  background: rgba(52, 211, 153, 0.18);
+  color: #a7f3d0;
+}
+.changes-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: rgba(52, 211, 153, 0.25);
+  color: #6ee7b7;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1;
+}
+.changes-toggle-btn.active .changes-badge {
+  background: rgba(52, 211, 153, 0.35);
+  color: #a7f3d0;
+}
+
+/* ── Changes Panel ── */
+.changes-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-primary);
+  z-index: 150;
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.changes-panel.open { transform: translateX(0); }
+.changes-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+.changes-panel-header h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
+}
+.changes-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(52, 211, 153, 0.04);
+}
+.changes-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+}
+.changes-stats {
+  display: flex;
+  gap: 8px;
+}
+.changes-additions {
+  color: var(--success);
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+.changes-deletions {
+  color: var(--error);
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+.changes-file-list {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.changes-file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  min-height: 48px;
+  transition: all 0.2s ease;
+}
+.changes-file-item:hover { border-color: var(--border-active); background: var(--bg-hover); }
+.changes-file-icon { flex-shrink: 0; font-size: 14px; }
+.changes-file-info { flex: 1; min-width: 0; overflow: hidden; }
+.changes-file-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.changes-file-path {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.changes-file-diff {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 /* ── Agent Selector ── */
 .agent-selector-wrapper {
   position: relative;
@@ -1153,6 +1375,13 @@ html, body {
 }
 .artifact-file-item:hover { border-color: var(--accent-primary); background: var(--bg-hover); }
 .artifact-file-item:active { transform: scale(0.98); }
+.artifact-file-item.non-file {
+  cursor: default;
+  opacity: 0.6;
+  border-style: dashed;
+}
+.artifact-file-item.non-file:hover { border-color: var(--border-subtle); background: var(--bg-tertiary); }
+.artifact-file-item.non-file:active { transform: none; }
 .artifact-file-icon { color: var(--accent-primary); flex-shrink: 0; }
 .artifact-file-name { font-size: 13px; font-weight: 500; color: var(--text-primary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .artifact-file-size { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--text-muted); }

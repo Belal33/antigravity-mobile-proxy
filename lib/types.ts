@@ -132,6 +132,17 @@ export interface ArtifactFile {
   name: string;
   size: number;
   mtime: string;
+  /** Whether this is a file with an extension (can be opened/viewed) or a named IDE artifact */
+  isFile?: boolean;
+  /** Where this artifact was detected from */
+  source?: 'ide' | 'brain' | 'none';
+}
+
+export interface ChangeFile {
+  filename: string;
+  filepath: string;
+  additions: number;
+  deletions: number;
 }
 
 export interface ChatMessage {
