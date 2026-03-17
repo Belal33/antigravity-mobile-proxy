@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import type { ChangeFile } from '@/lib/types';
 
 interface ChangesPanelProps {
@@ -8,7 +9,50 @@ interface ChangesPanelProps {
   changes: ChangeFile[];
 }
 
+interface DiffLine {
+  type: 'add' | 'del' | 'context' | 'header' | 'meta';
+  content: string;
+  lineNum?: number;
+}
+
+function parseDiff(raw: string): DiffLine[] {
+  const lines: DiffLine[] = [];
+  let addLineNum = 0;
+  let delLineNum = 0;
+
+  for (const line of raw.split('\n')) {
+    if (line.startsWith('diff --git') || line.startsWith('index ') || line.startsWith('new file') || line.startsWith('deleted file')) {
+      lines.push({ type: 'meta', content: line });
+    } else if (line.startsWith('---') || line.startsWith('+++')) {
+      lines.push({ type: 'meta', content: line });
+    } else if (line.startsWith('@@')) {
+      // Parse hunk header for line numbers
+      const match = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (match) {
+        delLineNum = parseInt(match[1]);
+        addLineNum = parseInt(match[2]);
+      }
+      lines.push({ type: 'header', content: line });
+    } else if (line.startsWith('+')) {
+      lines.push({ type: 'add', content: line.substring(1), lineNum: addLineNum++ });
+    } else if (line.startsWith('-')) {
+      lines.push({ type: 'del', content: line.substring(1), lineNum: delLineNum++ });
+    } else if (line.startsWith(' ')) {
+      lines.push({ type: 'context', content: line.substring(1), lineNum: addLineNum });
+      addLineNum++;
+      delLineNum++;
+    }
+  }
+
+  return lines;
+}
+
 export default function ChangesPanel({ open, onClose, changes }: ChangesPanelProps) {
+  const [viewingFile, setViewingFile] = useState<string | null>(null);
+  const [diffContent, setDiffContent] = useState<DiffLine[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [viewingFilename, setViewingFilename] = useState('');
+
   const totalAdditions = changes.reduce((s, c) => s + c.additions, 0);
   const totalDeletions = changes.reduce((s, c) => s + c.deletions, 0);
 
@@ -19,6 +63,32 @@ export default function ChangesPanel({ open, onClose, changes }: ChangesPanelPro
     if (name.endsWith('.md')) return '📄';
     if (name.endsWith('.json')) return '📋';
     return '📝';
+  };
+
+  const openDiff = async (change: ChangeFile) => {
+    setLoading(true);
+    setViewingFile(change.filepath);
+    setViewingFilename(change.filename);
+    setDiffContent([]);
+    try {
+      const res = await fetch(`/api/v1/changes/diff?filepath=${encodeURIComponent(change.filepath)}`);
+      const data = await res.json();
+      if (data.diff) {
+        setDiffContent(parseDiff(data.diff));
+      } else {
+        setDiffContent([{ type: 'meta', content: data.message || 'No diff available' }]);
+      }
+    } catch (e: any) {
+      setDiffContent([{ type: 'meta', content: `Error: ${e.message}` }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const closeDiffViewer = () => {
+    setViewingFile(null);
+    setDiffContent([]);
+    setViewingFilename('');
   };
 
   return (
@@ -34,36 +104,75 @@ export default function ChangesPanel({ open, onClose, changes }: ChangesPanelPro
         <h3>Changes Overview</h3>
       </div>
 
-      {/* Summary bar */}
-      <div className="changes-summary">
-        <span className="changes-count">{changes.length} file{changes.length !== 1 ? 's' : ''} changed</span>
-        <div className="changes-stats">
-          {totalAdditions > 0 && <span className="changes-additions">+{totalAdditions}</span>}
-          {totalDeletions > 0 && <span className="changes-deletions">-{totalDeletions}</span>}
+      {viewingFile ? (
+        /* Diff viewer */
+        <div className="diff-viewer">
+          <div className="diff-viewer-header">
+            <button className="diff-back-btn" onClick={closeDiffViewer}>← Back</button>
+            <span className="diff-viewer-title">{viewingFilename}</span>
+            <span className="diff-viewer-path">{viewingFile}</span>
+          </div>
+          <div className="diff-viewer-body">
+            {loading ? (
+              <div style={{ color: 'var(--text-muted)', padding: '16px', fontStyle: 'italic' }}>Loading diff...</div>
+            ) : diffContent.length === 0 ? (
+              <div style={{ color: 'var(--text-muted)', padding: '16px' }}>No changes found</div>
+            ) : (
+              <div className="diff-lines">
+                {diffContent.map((line, i) => (
+                  <div key={i} className={`diff-line diff-line-${line.type}`}>
+                    <span className="diff-line-num">
+                      {line.lineNum !== undefined ? line.lineNum : ''}
+                    </span>
+                    <span className="diff-line-indicator">
+                      {line.type === 'add' ? '+' : line.type === 'del' ? '-' : line.type === 'header' ? '@@' : ''}
+                    </span>
+                    <span className="diff-line-content">{line.content}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      ) : (
+        /* File list */
+        <>
+          {/* Summary bar */}
+          <div className="changes-summary">
+            <span className="changes-count">{changes.length} file{changes.length !== 1 ? 's' : ''} changed</span>
+            <div className="changes-stats">
+              {totalAdditions > 0 && <span className="changes-additions">+{totalAdditions}</span>}
+              {totalDeletions > 0 && <span className="changes-deletions">-{totalDeletions}</span>}
+            </div>
+          </div>
 
-      {/* File list */}
-      <div className="changes-file-list">
-        {changes.map(c => (
-          <div key={c.filepath} className="changes-file-item">
-            <span className="changes-file-icon">{fileIcon(c.filename)}</span>
-            <div className="changes-file-info">
-              <div className="changes-file-name">{c.filename}</div>
-              <div className="changes-file-path">{c.filepath}</div>
-            </div>
-            <div className="changes-file-diff">
-              {c.additions > 0 && <span className="changes-additions">+{c.additions}</span>}
-              {c.deletions > 0 && <span className="changes-deletions">-{c.deletions}</span>}
-            </div>
+          <div className="changes-file-list">
+            {changes.map(c => (
+              <button
+                key={c.filepath}
+                className="changes-file-item"
+                onClick={() => openDiff(c)}
+                title={`View diff: ${c.filepath}`}
+              >
+                <span className="changes-file-icon">{fileIcon(c.filename)}</span>
+                <div className="changes-file-info">
+                  <div className="changes-file-name">{c.filename}</div>
+                  <div className="changes-file-path">{c.filepath}</div>
+                </div>
+                <div className="changes-file-diff">
+                  {c.additions > 0 && <span className="changes-additions">+{c.additions}</span>}
+                  {c.deletions > 0 && <span className="changes-deletions">-{c.deletions}</span>}
+                </div>
+              </button>
+            ))}
+            {changes.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                No file changes in this conversation
+              </div>
+            )}
           </div>
-        ))}
-        {changes.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>
-            No file changes in this conversation
-          </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
