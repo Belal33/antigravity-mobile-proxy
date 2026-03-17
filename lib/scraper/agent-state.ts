@@ -4,11 +4,12 @@
  */
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { SELECTORS } from '../cdp/selectors';
 import type { ProxyContext, AgentState } from '../types';
 
-const DEBUG_FILE = path.join('/tmp', 'proxy-debug-state.json');
+const DEBUG_FILE = path.join(os.tmpdir(), 'proxy-debug-state.json');
 
 /**
  * Get a comprehensive snapshot of the entire agent panel state.

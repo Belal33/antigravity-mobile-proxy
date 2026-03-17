@@ -3,13 +3,17 @@
  * Ensures the CDP connection is established before any API route runs.
  * Called lazily on first API request.
  * 
- * Auto-recovery: If Antigravity is running without CDP, or CDP is a "zombie"
- * (reachable but 0 workbench pages), the proxy will automatically kill existing
- * instances and restart Antigravity with --remote-debugging-port enabled.
+ * Auto-recovery handles three scenarios:
+ * 1. CDP active with windows — just retry the connection (no kill).
+ * 2. CDP active but 0 workbench pages (zombie) — wait for pages, then kill+restart.
+ * 3. CDP not reachable — Antigravity not running or launched without CDP. Kill+restart.
+ * 
+ * On Windows, extra settle time is given after killing processes because taskkill /F /T
+ * can leave lock files and the process tree takes longer to fully terminate.
  */
 
 import { connectToWorkbench } from './cdp/connection';
-import { isCdpServerActive, startCdpServer } from './cdp/process-manager';
+import { isCdpServerActive, startCdpServer, waitForWorkbenchPages } from './cdp/process-manager';
 import { logger } from './logger';
 import ctx from './context';
 
@@ -17,7 +21,11 @@ let initialized = false;
 let initPromise: Promise<void> | null = null;
 
 /** Maximum number of auto-recovery attempts before giving up */
-const MAX_RECOVERY_ATTEMPTS = 2;
+const MAX_RECOVERY_ATTEMPTS = 3;
+
+/** Windows needs extra time after process kills for lock file cleanup */
+const IS_WIN = process.platform === 'win32';
+const POST_RESTART_SETTLE_MS = IS_WIN ? 5000 : 3000;
 
 export async function ensureCdpConnection(): Promise<void> {
   if (initialized && ctx.workbenchPage) return;
@@ -45,42 +53,77 @@ export async function ensureCdpConnection(): Promise<void> {
         // Check if CDP endpoint is reachable at all
         const status = await isCdpServerActive();
 
-        if (status.active && status.windowCount === 0) {
-          // ZOMBIE STATE: CDP server responds but has 0 workbench pages.
-          // This happens when Antigravity was launched without --remote-debugging-port
-          // and a second instance with CDP merged into it then exited.
-          logger.warn('[CDP Init] Zombie CDP detected: server active but 0 workbench pages. Killing and restarting...');
-        } else if (!status.active) {
-          // CDP not reachable at all — Antigravity not running or launched without CDP.
-          logger.warn('[CDP Init] CDP server not reachable. Starting Antigravity with CDP...');
-        } else {
-          // CDP is active with windows — something else went wrong in connectToWorkbench.
-          // Try connecting again.
-          logger.info(`[CDP Init] CDP active with ${status.windowCount} window(s). Retrying connection...`);
+        if (status.active && status.windowCount > 0) {
+          // ── CASE 1: CDP is active with windows ───────────────────
+          // Something else went wrong in connectToWorkbench (timing, page filter, etc.).
+          // Do NOT kill Antigravity — just reset context and retry.
+          logger.info(`[CDP Init] CDP active with ${status.windowCount} window(s). Retrying connection without restart...`);
+
+          resetBrowserContext();
+
+          try {
+            await connectToWorkbench(ctx);
+            initialized = true;
+            setupDisconnectHandlers();
+            logger.info('[CDP Init] Auto-recovery successful! Connected to workbench.');
+            return;
+          } catch (retryErr: any) {
+            logger.warn(`[CDP Init] Retry ${attempt} failed: ${retryErr.message}`);
+            // Wait a bit before next attempt
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            continue;
+          }
         }
 
-        // Kill existing instances and restart with CDP
+        if (status.active && status.windowCount === 0) {
+          // ── CASE 2: Zombie CDP — server active but 0 workbench pages ─
+          // This often happens right after a restart when pages haven't loaded yet.
+          // First, wait up to 10s for workbench pages to appear before resorting to kill.
+          logger.warn('[CDP Init] CDP server active but 0 workbench pages. Waiting for pages to load...');
+
+          const pagesAppeared = await waitForWorkbenchPages(10000);
+          if (pagesAppeared) {
+            logger.info('[CDP Init] Workbench pages appeared! Connecting...');
+            resetBrowserContext();
+            try {
+              await connectToWorkbench(ctx);
+              initialized = true;
+              setupDisconnectHandlers();
+              logger.info('[CDP Init] Auto-recovery successful! Connected to workbench.');
+              return;
+            } catch (retryErr: any) {
+              logger.warn(`[CDP Init] Connection after page wait failed: ${retryErr.message}`);
+            }
+          } else {
+            logger.warn('[CDP Init] No workbench pages appeared after 10s. Will kill and restart...');
+          }
+        } else if (!status.active) {
+          // ── CASE 3: CDP not reachable ────────────────────────────
+          // Antigravity is not running, or was launched without --remote-debugging-port.
+          logger.warn('[CDP Init] CDP server not reachable. Starting Antigravity with CDP...');
+        }
+
+        // ── Kill + Restart ────────────────────────────────────────
+        // Only reached for zombie (after page wait failed) and unreachable cases.
         const result = await startCdpServer('.', true);
 
         if (!result.success) {
           logger.error(`[CDP Init] Auto-recovery failed: ${result.message}`);
+          // Wait before next attempt to let things settle
+          await new Promise(resolve => setTimeout(resolve, 3000));
           continue;
         }
 
         logger.info(`[CDP Init] Antigravity restarted: ${result.message}`);
 
-        // Wait a bit for workbench pages to fully load
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // Wait for workbench pages to fully load (startCdpServer already waits for
+        // CDP liveness + pages, but give extra time for the UI to settle)
+        await new Promise(resolve => setTimeout(resolve, POST_RESTART_SETTLE_MS));
 
         // Reset browser state for a fresh connection
-        if (ctx.browser) {
-          try { ctx.browser.disconnect(); } catch {}
-          ctx.browser = null;
-          ctx.workbenchPage = null;
-          ctx.allWorkbenches = [];
-        }
+        resetBrowserContext();
 
-        // Try connecting again
+        // Try connecting
         try {
           await connectToWorkbench(ctx);
           initialized = true;
@@ -89,6 +132,8 @@ export async function ensureCdpConnection(): Promise<void> {
           return;
         } catch (retryErr: any) {
           logger.error(`[CDP Init] Recovery attempt ${attempt} connection failed: ${retryErr.message}`);
+          // Wait before next attempt
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
 
@@ -99,6 +144,18 @@ export async function ensureCdpConnection(): Promise<void> {
   }
 
   await initPromise;
+}
+
+/**
+ * Reset the browser context so a fresh connection can be established.
+ */
+function resetBrowserContext() {
+  if (ctx.browser) {
+    try { ctx.browser.disconnect(); } catch {}
+    ctx.browser = null;
+    ctx.workbenchPage = null;
+    ctx.allWorkbenches = [];
+  }
 }
 
 /**

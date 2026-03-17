@@ -338,13 +338,30 @@ export async function getWindowTargets(): Promise<{
 }
 
 /**
- * Poll until CDP server is accessible.
+ * Poll until CDP server is accessible AND has at least one workbench page.
+ * Previously this only checked server liveness, causing connectToWorkbench()
+ * to fail immediately with "No workbench pages found" after a restart.
  */
 async function waitForCdp(timeoutMs: number): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const status = await isCdpServerActive();
-    if (status.active) return true;
+    if (status.active && status.windowCount > 0) return true;
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  return false;
+}
+
+/**
+ * Poll until the CDP server has at least one workbench page.
+ * Use when CDP is already reachable but workbench pages haven't loaded yet.
+ */
+export async function waitForWorkbenchPages(timeoutMs: number): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const status = await isCdpServerActive();
+    if (!status.active) return false; // CDP server went away
+    if (status.windowCount > 0) return true;
     await new Promise(resolve => setTimeout(resolve, 500));
   }
   return false;
