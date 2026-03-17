@@ -30,7 +30,11 @@ const IS_MAC = process.platform === 'darwin';
 function getAntigravityBinary(): string {
   // Allow explicit override via env
   if (process.env.ANTIGRAVITY_BINARY) {
-    return process.env.ANTIGRAVITY_BINARY;
+    const customBin = process.env.ANTIGRAVITY_BINARY;
+    if (!existsSync(customBin)) {
+      logger.warn(`[ProcessManager] ANTIGRAVITY_BINARY set to "${customBin}" but file does not exist.`);
+    }
+    return customBin;
   }
 
   if (IS_WIN) {
@@ -39,11 +43,14 @@ function getAntigravityBinary(): string {
       resolve(process.env.LOCALAPPDATA || '', 'Programs', 'Antigravity', 'Antigravity.exe'),
       resolve(process.env.PROGRAMFILES || 'C:\\Program Files', 'Google', 'Antigravity', 'Antigravity.exe'),
       resolve(process.env.PROGRAMFILES || 'C:\\Program Files', 'Antigravity', 'Antigravity.exe'),
+      // Also check x86 Program Files
+      resolve(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'Antigravity', 'Antigravity.exe'),
     ];
     for (const candidate of candidates) {
       if (candidate && existsSync(candidate)) return candidate;
     }
     // Fallback — assume it's in PATH
+    logger.warn('[ProcessManager] Antigravity.exe not found in known locations. Falling back to PATH lookup.');
     return 'Antigravity.exe';
   }
 
@@ -67,13 +74,14 @@ function getAntigravityBinary(): string {
 async function killAllAntigravity(): Promise<void> {
   try {
     if (IS_WIN) {
-      await execAsync('taskkill /F /IM Antigravity.exe 2>nul || exit 0');
+      // taskkill is case-insensitive; /T kills the entire process tree
+      await execAsync('taskkill /F /IM Antigravity.exe /T 2>nul || exit 0');
     } else {
       await execAsync('killall antigravity 2>/dev/null || true');
     }
     logger.info('[ProcessManager] Killed existing Antigravity processes.');
-    // Wait for process cleanup
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // Wait for process cleanup — Windows process trees can take longer to tear down
+    await new Promise(resolve => setTimeout(resolve, IS_WIN ? 2500 : 1500));
   } catch {
     // Ignore errors - process might not exist
   }
@@ -138,8 +146,17 @@ export async function startCdpServer(
   }
 
   const binaryPath = getAntigravityBinary();
-  // resolve() handles both absolute ('/home/user/proj') and relative ('my-proj') paths correctly
+  // resolve() handles both absolute ('/home/user/proj' or 'C:\Users\proj') and relative ('my-proj') paths correctly
   const absoluteDir = resolve(projectDir || '.');
+
+  // Validate the binary exists (unless it's a PATH-only fallback like 'Antigravity.exe')
+  const isBinaryAbsolute = binaryPath.includes('/') || binaryPath.includes('\\');
+  if (isBinaryAbsolute && !existsSync(binaryPath)) {
+    return {
+      success: false,
+      message: `Antigravity binary not found at "${binaryPath}". Set the ANTIGRAVITY_BINARY environment variable to the correct path.`,
+    };
+  }
 
   // Validate the directory exists
   try {
@@ -153,18 +170,24 @@ export async function startCdpServer(
 
   // Spawn the Antigravity binary
   try {
-    logger.info(`[ProcessManager] Starting Antigravity: ${binaryPath} --remote-debugging-port=${CDP_PORT} --new-window ${absoluteDir}`);
+    logger.info(`[ProcessManager] Starting Antigravity: ${binaryPath} --remote-debugging-port=${CDP_PORT} --new-window "${absoluteDir}"`);
     logger.info(`[ProcessManager] Platform: ${process.platform}, Binary: ${binaryPath}`);
 
+    // Build spawn options — cross-platform:
+    // - Linux/macOS: detached=true to create an orphan process, shell=false for direct exec
+    // - Windows: detached=true to release the child from the parent's console,
+    //   shell=false (use the resolved binary path directly, NOT through cmd.exe
+    //   which would break paths with spaces), windowsHide=true to avoid a console flash
     spawnedProcess = spawn(
       binaryPath,
       [`--remote-debugging-port=${CDP_PORT}`, '--new-window', absoluteDir],
       {
-        detached: !IS_WIN, // detached not needed on Windows
+        detached: true,
         stdio: 'ignore',
         env: { ...process.env },
-        // On Windows, use shell to resolve .exe correctly
-        shell: IS_WIN,
+        shell: false,
+        // Hide the console window on Windows (no flash)
+        windowsHide: true,
       }
     );
 
@@ -243,10 +266,11 @@ export async function openNewWindow(projectDir: string): Promise<{
         binaryPath,
         ['--new-window', absoluteDir],
         {
-          detached: !IS_WIN,
+          detached: true,
           stdio: 'ignore',
           env: { ...process.env },
-          shell: IS_WIN,
+          shell: false,
+          windowsHide: true,
         }
       );
       child.unref();
