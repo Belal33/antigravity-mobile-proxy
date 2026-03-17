@@ -131,9 +131,9 @@ export async function startCdpServer(
   message: string;
   pid?: number;
 }> {
-  // Check if CDP is already active
+  // Check if CDP is already active and healthy (has workbench pages)
   const status = await isCdpServerActive();
-  if (status.active) {
+  if (status.active && status.windowCount > 0 && !killExisting) {
     return {
       success: true,
       message: `CDP server already active on port ${CDP_PORT} with ${status.windowCount} window(s).`,
