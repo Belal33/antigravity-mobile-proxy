@@ -22,22 +22,28 @@ const execAsync = promisify(exec);
 const CDP_PORT_RAW = process.env.CDP_PORT || '9223';
 const CDP_PORT = parseInt(CDP_PORT_RAW, 10);
 
-// Use os.platform() or globalThis.process.platform to prevent Webpack from statically 
-// replacing `process.platform` with the build machine's OS (e.g., 'linux') during npm publish.
-const runtimePlatform = os.platform() || (globalThis.process && globalThis.process.platform) || 'unknown';
-
-const IS_WIN = runtimePlatform === 'win32';
-const IS_MAC = runtimePlatform === 'darwin';
-const IS_WSL = !IS_WIN && runtimePlatform === 'linux' && (() => {
+// Use string concatenation to defeat incredibly aggressive Turbopack/Next.js static Dead Code Elimination
+// which was previously executing os.platform() at build time and optimizing away the entire Windows block.
+const getPlatform = () => {
+  if (typeof process === 'undefined') return 'unknown';
+  const p = 'plat';
+  const f = 'form';
+  const prop = p + f;
+  return (process as any)[prop] || 'unknown';
+};
+const isWin = () => getPlatform() === 'win32';
+const isMac = () => getPlatform() === 'darwin';
+const isWsl = () => {
+  if (isWin() || getPlatform() !== 'linux') return false;
   try {
     return /microsoft|wsl/i.test(readFileSync('/proc/version', 'utf8'));
   } catch { return false; }
-})();
+};
 
 // Log platform detection at startup for cross-platform debugging
-logger.info(`[ProcessManager] Platform detection: runtimePlatform="${runtimePlatform}", os.type()="${os.type()}", IS_WIN=${IS_WIN}, IS_MAC=${IS_MAC}, IS_WSL=${IS_WSL}`);
+logger.info(`[ProcessManager] Platform detection: runtimePlatform="${getPlatform()}", os.type()="${os.type()}", IS_WIN=${isWin()}, IS_MAC=${isMac()}, IS_WSL=${isWsl()}`);
 
-if (IS_WSL) {
+if (isWsl()) {
   logger.info('[ProcessManager] WSL environment detected — will resolve Windows binary paths via /mnt/c/');
 }
 
@@ -55,7 +61,7 @@ function getAntigravityBinary(): string {
     return customBin;
   }
 
-  if (IS_WIN) {
+  if (isWin()) {
     // Windows: check common install locations
     const candidates = [
       resolve(process.env.LOCALAPPDATA || '', 'Programs', 'Antigravity', 'Antigravity.exe'),
@@ -72,7 +78,7 @@ function getAntigravityBinary(): string {
     return 'Antigravity.exe';
   }
 
-  if (IS_WSL) {
+  if (isWsl()) {
     // WSL: Linux kernel but Windows filesystem is mounted at /mnt/c/
     // Scan real user directories under /mnt/c/Users/ for the Antigravity binary
     const windowsUsersDir = '/mnt/c/Users';
@@ -110,7 +116,7 @@ function getAntigravityBinary(): string {
     // Fall through to Linux path as last resort
   }
 
-  if (IS_MAC) {
+  if (isMac()) {
     // macOS: standard .app bundle location
     const macBinary = '/Applications/Antigravity.app/Contents/MacOS/Antigravity';
     if (existsSync(macBinary)) return macBinary;
@@ -129,10 +135,10 @@ function getAntigravityBinary(): string {
  */
 async function killAllAntigravity(): Promise<void> {
   try {
-    if (IS_WIN) {
+    if (isWin()) {
       // taskkill is case-insensitive; /T kills the entire process tree
       await execAsync('taskkill /F /IM Antigravity.exe /T 2>nul || exit 0');
-    } else if (IS_WSL) {
+    } else if (isWsl()) {
       // In WSL, use taskkill.exe to kill the Windows process
       await execAsync('taskkill.exe /F /IM Antigravity.exe /T 2>/dev/null || true');
     } else {
@@ -140,7 +146,7 @@ async function killAllAntigravity(): Promise<void> {
     }
     logger.info('[ProcessManager] Killed existing Antigravity processes.');
     // Wait for process cleanup — Windows process trees can take longer to tear down
-    await new Promise(resolve => setTimeout(resolve, (IS_WIN || IS_WSL) ? 2500 : 1500));
+    await new Promise(resolve => setTimeout(resolve, (isWin() || isWsl()) ? 2500 : 1500));
   } catch {
     // Ignore errors - process might not exist
   }
