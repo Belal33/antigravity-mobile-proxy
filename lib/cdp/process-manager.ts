@@ -12,7 +12,7 @@
 
 import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
-import { existsSync, statSync } from 'fs';
+import { existsSync, statSync, readFileSync, readdirSync } from 'fs';
 import { resolve } from 'path';
 import { logger } from '../logger';
 
@@ -22,6 +22,15 @@ const CDP_PORT_RAW = process.env.CDP_PORT || '9223';
 const CDP_PORT = parseInt(CDP_PORT_RAW, 10);
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
+const IS_WSL = !IS_WIN && process.platform === 'linux' && (() => {
+  try {
+    return /microsoft|wsl/i.test(readFileSync('/proc/version', 'utf8'));
+  } catch { return false; }
+})();
+
+if (IS_WSL) {
+  logger.info('[ProcessManager] WSL environment detected — will resolve Windows binary paths via /mnt/c/');
+}
 
 /**
  * Resolve the Antigravity binary path based on the OS.
@@ -54,6 +63,44 @@ function getAntigravityBinary(): string {
     return 'Antigravity.exe';
   }
 
+  if (IS_WSL) {
+    // WSL: Linux kernel but Windows filesystem is mounted at /mnt/c/
+    // Scan real user directories under /mnt/c/Users/ for the Antigravity binary
+    const windowsUsersDir = '/mnt/c/Users';
+    const wslCandidates: string[] = [];
+
+    try {
+      const skipDirs = new Set(['Public', 'Default', 'Default User', 'All Users', 'desktop.ini']);
+      const userDirs = readdirSync(windowsUsersDir).filter(u => !skipDirs.has(u));
+      for (const user of userDirs) {
+        wslCandidates.push(
+          resolve(windowsUsersDir, user, 'AppData/Local/Programs/Antigravity/Antigravity.exe'),
+          resolve(windowsUsersDir, user, 'AppData/Local/Programs/antigravity/Antigravity.exe'),
+          resolve(windowsUsersDir, user, 'AppData/Local/Antigravity/Antigravity.exe'),
+        );
+      }
+    } catch (e) {
+      logger.warn(`[ProcessManager] Could not scan ${windowsUsersDir}: ${(e as Error).message}`);
+    }
+
+    // Also check Program Files locations
+    wslCandidates.push(
+      '/mnt/c/Program Files/Google/Antigravity/Antigravity.exe',
+      '/mnt/c/Program Files/Antigravity/Antigravity.exe',
+      '/mnt/c/Program Files (x86)/Antigravity/Antigravity.exe',
+    );
+
+    for (const candidate of wslCandidates) {
+      if (existsSync(candidate)) {
+        logger.info(`[ProcessManager] Found Antigravity binary via WSL at: ${candidate}`);
+        return candidate;
+      }
+    }
+
+    logger.warn('[ProcessManager] WSL detected but Antigravity.exe not found in /mnt/c/. Falling back to Linux path.');
+    // Fall through to Linux path as last resort
+  }
+
   if (IS_MAC) {
     // macOS: standard .app bundle location
     const macBinary = '/Applications/Antigravity.app/Contents/MacOS/Antigravity';
@@ -76,12 +123,15 @@ async function killAllAntigravity(): Promise<void> {
     if (IS_WIN) {
       // taskkill is case-insensitive; /T kills the entire process tree
       await execAsync('taskkill /F /IM Antigravity.exe /T 2>nul || exit 0');
+    } else if (IS_WSL) {
+      // In WSL, use taskkill.exe to kill the Windows process
+      await execAsync('taskkill.exe /F /IM Antigravity.exe /T 2>/dev/null || true');
     } else {
       await execAsync('killall antigravity 2>/dev/null || true');
     }
     logger.info('[ProcessManager] Killed existing Antigravity processes.');
     // Wait for process cleanup — Windows process trees can take longer to tear down
-    await new Promise(resolve => setTimeout(resolve, IS_WIN ? 2500 : 1500));
+    await new Promise(resolve => setTimeout(resolve, (IS_WIN || IS_WSL) ? 2500 : 1500));
   } catch {
     // Ignore errors - process might not exist
   }
