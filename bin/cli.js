@@ -460,12 +460,16 @@ function startServer({ email, port, authtoken, noTunnel }) {
       const line = data.toString().trim();
       if (!line) return;
       // Suppress expected CDP auto-recovery noise — these are handled internally
-      if (line.includes('[CDP]') || line.includes('[CDP Init]') || line.includes('[ProcessManager]')) {
+      if (line.includes('[CDP]') || line.includes('[CDP Init]')) {
         // Only show the final "all attempts failed" message
         if (line.includes('All') && line.includes('recovery attempts failed')) {
           console.log(`  ${fmt.warn(line)}`);
         }
         return;
+      }
+      if (line.includes('[ProcessManager]')) {
+         console.log(`  ${fmt.dim('[CDP]')} ${line}`);
+         return;
       }
       if (line.toLowerCase().includes('error')) {
         console.log(`  ${fmt.dim('[next]')} ${line}`);

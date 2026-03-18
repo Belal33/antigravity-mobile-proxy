@@ -14,22 +14,28 @@ import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { existsSync, statSync, readFileSync, readdirSync } from 'fs';
 import { resolve } from 'path';
+import * as os from 'os';
 import { logger } from '../logger';
 
 const execAsync = promisify(exec);
 
 const CDP_PORT_RAW = process.env.CDP_PORT || '9223';
 const CDP_PORT = parseInt(CDP_PORT_RAW, 10);
-const IS_WIN = process.platform === 'win32';
-const IS_MAC = process.platform === 'darwin';
-const IS_WSL = !IS_WIN && process.platform === 'linux' && (() => {
+
+// Use os.platform() or globalThis.process.platform to prevent Webpack from statically 
+// replacing `process.platform` with the build machine's OS (e.g., 'linux') during npm publish.
+const runtimePlatform = os.platform() || (globalThis.process && globalThis.process.platform) || 'unknown';
+
+const IS_WIN = runtimePlatform === 'win32';
+const IS_MAC = runtimePlatform === 'darwin';
+const IS_WSL = !IS_WIN && runtimePlatform === 'linux' && (() => {
   try {
     return /microsoft|wsl/i.test(readFileSync('/proc/version', 'utf8'));
   } catch { return false; }
 })();
 
 // Log platform detection at startup for cross-platform debugging
-logger.info(`[ProcessManager] Platform detection: process.platform="${process.platform}", os.type()="${require('os').type()}", IS_WIN=${IS_WIN}, IS_MAC=${IS_MAC}, IS_WSL=${IS_WSL}`);
+logger.info(`[ProcessManager] Platform detection: runtimePlatform="${runtimePlatform}", os.type()="${os.type()}", IS_WIN=${IS_WIN}, IS_MAC=${IS_MAC}, IS_WSL=${IS_WSL}`);
 
 if (IS_WSL) {
   logger.info('[ProcessManager] WSL environment detected — will resolve Windows binary paths via /mnt/c/');
