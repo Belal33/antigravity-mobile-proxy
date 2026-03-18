@@ -28,6 +28,9 @@ const IS_WSL = !IS_WIN && process.platform === 'linux' && (() => {
   } catch { return false; }
 })();
 
+// Log platform detection at startup for cross-platform debugging
+logger.info(`[ProcessManager] Platform detection: process.platform="${process.platform}", os.type()="${require('os').type()}", IS_WIN=${IS_WIN}, IS_MAC=${IS_MAC}, IS_WSL=${IS_WSL}`);
+
 if (IS_WSL) {
   logger.info('[ProcessManager] WSL environment detected — will resolve Windows binary paths via /mnt/c/');
 }
