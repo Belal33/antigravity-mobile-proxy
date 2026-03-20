@@ -236,7 +236,7 @@ export async function startCdpServer(
   // Spawn the Antigravity binary
   try {
     logger.info(`[ProcessManager] Starting Antigravity: ${binaryPath} --remote-debugging-port=${CDP_PORT} --new-window "${absoluteDir}"`);
-    logger.info(`[ProcessManager] Platform: ${process.platform}, Binary: ${binaryPath}`);
+    logger.info(`[ProcessManager] Platform: ${getPlatform()}, Binary: ${binaryPath}`);
 
     // Build spawn options — cross-platform:
     // - Linux/macOS: detached=true to create an orphan process, shell=false for direct exec

@@ -24,7 +24,8 @@ let initPromise: Promise<void> | null = null;
 const MAX_RECOVERY_ATTEMPTS = 3;
 
 /** Windows needs extra time after process kills for lock file cleanup */
-const IS_WIN = process.platform === 'win32';
+// Use string concatenation to defeat Turbopack DCE (same technique as process-manager.ts)
+const IS_WIN = (() => { const p = 'plat', f = 'form'; return (process as any)[p + f] === 'win32'; })();
 const POST_RESTART_SETTLE_MS = IS_WIN ? 5000 : 3000;
 
 export async function ensureCdpConnection(): Promise<void> {

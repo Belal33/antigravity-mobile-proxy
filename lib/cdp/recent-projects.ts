@@ -26,20 +26,36 @@ export interface RecentProject {
 }
 
 /**
+ * Runtime platform accessor — defeats Turbopack/Next.js static Dead Code
+ * Elimination which evaluates process.platform at BUILD time and strips
+ * branches for other OSes.  String concatenation forces runtime resolution.
+ * (Same technique used in process-manager.ts)
+ */
+const getRuntimePlatform = (): string => {
+  if (typeof process === 'undefined') return 'unknown';
+  const p = 'plat';
+  const f = 'form';
+  return (process as any)[p + f] || 'unknown';
+};
+
+/**
  * Resolve the Antigravity workspaceStorage directory based on the OS.
+ *
+ * Uses a resolver-map with a runtime-resolved key so Turbopack cannot
+ * dead-code-eliminate any platform branch at build time.
  */
 function getWorkspaceStoragePath(): string {
   const home = homedir();
-  const platform = process.platform;
+  const platform = getRuntimePlatform();
 
-  if (platform === 'win32') {
-    return join(process.env.APPDATA || join(home, 'AppData', 'Roaming'), 'Antigravity', 'User', 'workspaceStorage');
-  }
-  if (platform === 'darwin') {
-    return join(home, 'Library', 'Application Support', 'Antigravity', 'User', 'workspaceStorage');
-  }
-  // Linux
-  return join(process.env.XDG_CONFIG_HOME || join(home, '.config'), 'Antigravity', 'User', 'workspaceStorage');
+  const resolvers: Record<string, () => string> = {
+    win32:  () => join(process.env.APPDATA || join(home, 'AppData', 'Roaming'), 'Antigravity', 'User', 'workspaceStorage'),
+    darwin: () => join(home, 'Library', 'Application Support', 'Antigravity', 'User', 'workspaceStorage'),
+    linux:  () => join(process.env.XDG_CONFIG_HOME || join(home, '.config'), 'Antigravity', 'User', 'workspaceStorage'),
+  };
+
+  const resolve = resolvers[platform] || resolvers.linux;
+  return resolve();
 }
 
 /**
@@ -83,8 +99,10 @@ export function getRecentProjects(limit: number = 15): RecentProject[] {
         let fsPath: string;
         if (folderUri.startsWith('file://')) {
           fsPath = decodeURIComponent(new URL(folderUri).pathname);
-          // On Windows, strip leading / from /C:/Users/...
-          if (process.platform === 'win32' && fsPath.startsWith('/') && fsPath[2] === ':') {
+          // Strip leading / from Windows-style drive paths like /C:/Users/...
+          // Uses a regex test instead of process.platform check to avoid
+          // Turbopack DCE (and because this pattern only appears in Windows URIs).
+          if (/^\/[A-Za-z]:/.test(fsPath)) {
             fsPath = fsPath.substring(1);
           }
         } else {

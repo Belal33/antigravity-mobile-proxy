@@ -223,3 +223,52 @@ All can be overridden with the `ANTIGRAVITY_BINARY` environment variable.
 - Config root by OS: Linux → `~/.config`, macOS → `~/Library/Application Support`, Windows → `%APPDATA%`
 - Filter out `vscode-remote://` entries (remote SSH) and playground dirs
 - Use `path.resolve()` (not `path.join()`) when the user provides directory paths — `join(cwd, '/abs/path')` produces wrong results
+
+---
+
+## Turbopack / Next.js Standalone Build — Dead Code Elimination (Learned March 2026)
+
+### The Problem
+Next.js's Turbopack (and Webpack) evaluates `process.platform` **at build time** during standalone builds. Any `if (process.platform === 'win32')` branches get statically resolved based on the **build machine's OS**, not the runtime OS. A standalone build done on Linux will strip the `win32` and `darwin` branches entirely, causing cross-platform failures.
+
+### Affected Patterns
+```typescript
+// ❌ BROKEN — Turbopack eliminates non-matching branches at build time
+if (process.platform === 'win32') { /* eliminated on Linux builds */ }
+const IS_WIN = process.platform === 'win32'; // always false on Linux builds
+```
+
+### The Fix — String Concatenation
+Use string concatenation to access `process.platform` through a dynamic property key that the optimizer cannot statically resolve:
+```typescript
+// ✅ SAFE — forces runtime resolution, optimizer can't fold this
+const getRuntimePlatform = (): string => {
+  const p = 'plat';
+  const f = 'form';
+  return (process as any)[p + f] || 'unknown';
+};
+```
+
+For platform-specific data like config paths, use **resolver maps** with the dynamic key:
+```typescript
+// ✅ SAFE — all branches survive because the key is runtime-resolved
+const resolvers: Record<string, () => string> = {
+  win32:  () => windowsPath(),
+  darwin: () => macPath(),
+  linux:  () => linuxPath(),
+};
+const resolve = resolvers[getRuntimePlatform()] || resolvers.linux;
+```
+
+For platform-specific pattern matching (like stripping `/` from Windows `file://` URIs), prefer **content-based detection** instead of platform checks:
+```typescript
+// ✅ SAFE — detects Windows paths by their content, not by process.platform
+if (/^\/[A-Za-z]:/.test(fsPath)) fsPath = fsPath.substring(1);
+```
+
+### Files Using This Pattern
+| File | Technique |
+|---|---|
+| `lib/cdp/process-manager.ts` | `getPlatform()` via string concatenation (original fix) |
+| `lib/cdp/recent-projects.ts` | `getRuntimePlatform()` + resolver map + regex path detection |
+| `lib/init.ts` | IIFE with string concatenation for `IS_WIN` |
