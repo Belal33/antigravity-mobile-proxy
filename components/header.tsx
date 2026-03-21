@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { WindowInfo, ConversationInfo } from '@/lib/types';
 import type { CdpStatus, RecentProject } from '@/hooks/use-conversations';
+import ConversationSelector from './conversation-selector';
 
 interface HeaderProps {
   statusState: string;
@@ -123,12 +124,12 @@ export default function Header({
         </div>
       </div>
       <div className="header-right">
-        {/* Conversation Selector - commented out for now */}
-        {/* <ConversationSelector
+        {/* Conversation Selector */}
+        <ConversationSelector
           conversations={conversations}
           activeConversation={activeConversation}
           onSelect={onSelectConversation}
-        /> */}
+        />
 
         {/* Window Selector */}
         <div ref={wrapperRef} className={`window-selector-wrapper ${windowOpen ? 'open' : ''}`}>

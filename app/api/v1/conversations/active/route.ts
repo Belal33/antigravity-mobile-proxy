@@ -104,14 +104,20 @@ export async function GET() {
 
   const files = getConversationFiles(convDir);
   const title = extractTitle(convDir);
-  const stat = fs.statSync(convDir);
+  // Use max file mtime; fall back to dir stat for new/empty conversations
+  const latestFileMtime = files.reduce((max, f) => {
+    const t = new Date(f.mtime).getTime();
+    return t > max ? t : max;
+  }, 0);
+  const dirStat = fs.statSync(convDir);
+  const mtime = new Date(latestFileMtime > 0 ? latestFileMtime : dirStat.mtimeMs).toISOString();
 
   return NextResponse.json({
     active: true,
     id: ctx.activeConversationId,
     title,
     files,
-    mtime: stat.mtime.toISOString(),
+    mtime,
   });
 }
 

@@ -100,23 +100,21 @@ export async function GET() {
           const dirPath = path.join(BRAIN_DIR, entry.name);
           const files = getConversationFiles(dirPath);
           const title = extractTitle(dirPath);
-          const latestMtime = files.reduce((max, f) => {
+          // Use max file mtime; fall back to directory stat when no tracked files exist yet
+          const latestFileMtime = files.reduce((max, f) => {
               const t = new Date(f.mtime).getTime();
               return t > max ? t : max;
           }, 0);
-          brainData.push({ id: entry.name, title, files, mtime: new Date(latestMtime).toISOString() });
+          const dirMtime = fs.statSync(dirPath).mtimeMs;
+          const mtime = new Date(latestFileMtime > 0 ? latestFileMtime : dirMtime).toISOString();
+          brainData.push({ id: entry.name, title, files, mtime });
         }
       }
     }
 
     let foundActive = false;
     let conversations = ideConversations.map((c) => {
-      const isActive = globalActiveTitle 
-         ? (c.title === globalActiveTitle || c.title.includes(globalActiveTitle) || globalActiveTitle.includes(c.title)) 
-         : c.active;
-      if (isActive) foundActive = true;
-      
-      // Map IDE title back to Brain
+      // Map IDE title back to Brain first, so we can also check by brain ID
       let mappedId = c.index.toString();
       let files: any[] = [];
       let mtime: string | undefined = undefined;
@@ -142,6 +140,13 @@ export async function GET() {
           files = bestMatch.files;
           mtime = bestMatch.mtime;
       }
+
+      // Mark active: match by brain ID first (most reliable), then by title
+      const isActive = (ctx.activeConversationId && mappedId === ctx.activeConversationId)
+        || (globalActiveTitle
+          ? (c.title === globalActiveTitle || c.title.includes(globalActiveTitle) || globalActiveTitle.includes(c.title))
+          : c.active);
+      if (isActive) foundActive = true;
 
       return {
         id: mappedId,
