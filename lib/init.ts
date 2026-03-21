@@ -14,8 +14,10 @@
 
 import { connectToWorkbench } from './cdp/connection';
 import { isCdpServerActive, startCdpServer, waitForWorkbenchPages } from './cdp/process-manager';
+import { getRecentProjects } from './cdp/recent-projects';
 import { logger } from './logger';
 import ctx from './context';
+import { homedir } from 'os';
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
@@ -27,6 +29,29 @@ const MAX_RECOVERY_ATTEMPTS = 3;
 // Use string concatenation to defeat Turbopack DCE (same technique as process-manager.ts)
 const IS_WIN = (() => { const p = 'plat', f = 'form'; return (process as any)[p + f] === 'win32'; })();
 const POST_RESTART_SETTLE_MS = IS_WIN ? 5000 : 3000;
+
+/**
+ * Determine the best project directory to open when auto-recovery restarts Antigravity.
+ * Uses the most recently opened project from Antigravity's workspace storage.
+ * Falls back to the user's home directory if no recent projects are found.
+ * 
+ * This avoids opening the .next/standalone/ build directory (which is what
+ * resolve('.') would give in standalone mode).
+ */
+function getDefaultProjectDir(): string {
+  try {
+    const recent = getRecentProjects(1);
+    if (recent.length > 0) {
+      logger.info(`[CDP Init] Using most recent project as startup dir: ${recent[0].path}`);
+      return recent[0].path;
+    }
+  } catch (e: any) {
+    logger.warn(`[CDP Init] Failed to read recent projects: ${e.message}`);
+  }
+  const fallback = homedir();
+  logger.info(`[CDP Init] No recent projects found, using home dir: ${fallback}`);
+  return fallback;
+}
 
 export async function ensureCdpConnection(): Promise<void> {
   if (initialized && ctx.workbenchPage) return;
@@ -106,7 +131,8 @@ export async function ensureCdpConnection(): Promise<void> {
 
         // ── Kill + Restart ────────────────────────────────────────
         // Only reached for zombie (after page wait failed) and unreachable cases.
-        const result = await startCdpServer('.', true);
+        const projectDir = getDefaultProjectDir();
+        const result = await startCdpServer(projectDir, true);
 
         if (!result.success) {
           logger.error(`[CDP Init] Auto-recovery failed: ${result.message}`);
