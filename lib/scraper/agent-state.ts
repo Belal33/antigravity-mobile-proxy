@@ -339,15 +339,87 @@ export async function getFullAgentState(ctx: ProxyContext): Promise<AgentState> 
 
       const terminal = el.querySelector('.component-shared-terminal');
       let terminalOutput = '';
-      if (terminal) {
-        const rows =
-          terminal.querySelector('.xterm-rows') ||
-          terminal.querySelector('.xterm-screen') ||
-          terminal.querySelector('[class*="xterm"]');
-        if (rows) terminalOutput = rows.textContent?.substring(0, 500) || '';
-        if (!terminalOutput)
-          terminalOutput = terminal.textContent?.substring(0, 500) || '';
+      // Only read terminal output AFTER the command finishes (exitCode present).
+      // While the command is still running (no exitCode yet), returning null here
+      // prevents the partial buffer from appearing on the first 'new' tool_call
+      // event — the consumer only gets it once via the 'update' event on completion.
+      const commandFinished = !!exitCode;
+      if (terminal && commandFinished) {
+        // ── Antigravity uses canvas-rendered xterm (confirmed via live DOM inspection).
+        // Text is painted on <canvas> — no .xterm-rows exist. The xterm Terminal JS
+        // instance is stored on the .terminal-wrapper element (grandparent of .terminal.xterm)
+        // as a non-enumerable property named 'xterm'. Its buffer.active gives us all lines.
+        //
+        // Confirmed via diagnostic: grandparent.xterm.buffer.active.getLine(i).translateToString()
+        // The embedded terminal is very narrow (e.g. 27 cols) so long lines are hard-wrapped;
+        // we rejoin consecutive non-empty lines that look like continuations.
+
+        try {
+          const xtermDiv = terminal.querySelector('.terminal.xterm');
+          // grandparent = .terminal-wrapper (parent of the unnamed div that wraps xterm)
+          const wrapper = xtermDiv?.parentElement?.parentElement as any;
+          const xtermInst = wrapper?.xterm;
+
+          if (xtermInst?.buffer?.active) {
+            const buf = xtermInst.buffer.active;
+            const cols: number = xtermInst.cols || 80;
+            const rawLines: string[] = [];
+
+            // Read last 120 lines of the buffer (enough for most command output)
+            for (let i = Math.max(0, buf.length - 120); i < buf.length; i++) {
+              const line = buf.getLine(i);
+              if (line) {
+                // translateToString(true) trims trailing spaces per line
+                rawLines.push(line.translateToString(true));
+              }
+            }
+
+            // Re-join hard-wrapped lines: if a line is exactly `cols` chars long
+            // it was wrapped by xterm and should be concatenated with the next.
+            const joined: string[] = [];
+            for (let i = 0; i < rawLines.length; i++) {
+              const cur = rawLines[i];
+              if (joined.length > 0 && rawLines[i - 1]?.length === cols) {
+                // previous line was full-width — this is a continuation
+                joined[joined.length - 1] += cur;
+              } else {
+                joined.push(cur);
+              }
+            }
+
+            terminalOutput = joined
+              .filter((l) => l.trim())
+              .join('\n')
+              .substring(0, 2000);
+          }
+        } catch (_e) {
+          // Buffer API failed — fall through to DOM / aria-label approaches
+        }
+
+        // Fallback A: .xterm-rows DOM rows (DOM-rendered mode; not used by Antigravity currently)
+        if (!terminalOutput) {
+          const rowDivs = terminal.querySelectorAll('.xterm-rows > div');
+          if (rowDivs.length > 0) {
+            terminalOutput = Array.from(rowDivs)
+              .map((r) => ((r as HTMLElement).innerText || (r as HTMLElement).textContent || '').trim())
+              .filter(Boolean)
+              .join('\n')
+              .substring(0, 2000);
+          }
+        }
+
+        // Fallback B: textarea aria-label (terminal name / last command metadata, not output)
+        // Only use if no better source found AND the label looks like actual shell text, not metadata.
+        // Skipping entirely in favour of null — 'stale environment' messages are not useful output.
+
+        // Fallback C: whole container textContent minus <style>/<script> tags
+        if (!terminalOutput) {
+          const clone = terminal.cloneNode(true) as Element;
+          clone.querySelectorAll('style, script').forEach((s) => s.remove());
+          terminalOutput = ((clone as HTMLElement).textContent || '').trim().substring(0, 500);
+        }
       }
+      terminalOutput = terminalOutput.trim();
 
       toolCalls.push({
         id: proxyToolId,

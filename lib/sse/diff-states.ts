@@ -40,7 +40,9 @@ export function diffStates(prev: AgentState, curr: AgentState): SSEStep[] {
       p.status !== c.status ||
       p.exitCode !== c.exitCode ||
       p.hasCancelBtn !== c.hasCancelBtn ||
-      footerChanged
+      footerChanged ||
+      // Emit update when terminal output arrives (null → string after command finishes)
+      (p.terminalOutput === null && c.terminalOutput !== null)
     ) {
       console.log(
         `[diffStates] UPDATED tool_call at index ${i}: status ${p.status}->${c.status}, exitCode ${p.exitCode}->${c.exitCode}, footerChanged=${footerChanged}`
