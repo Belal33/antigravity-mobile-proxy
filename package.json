@@ -1,6 +1,6 @@
 {
   "name": "antigravity-mobile-proxy",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "A web chat proxy for Antigravity IDE with ngrok OAuth tunnel support",
   "keywords": [
     "antigravity",
@@ -16,7 +16,17 @@
   "files": [
     "bin/",
     ".next/standalone/",
+    "!.next/standalone/node_modules/typescript/",
+    "!.next/standalone/node_modules/@img/",
+    "!.next/standalone/node_modules/sharp/",
+    "!.next/standalone/scripts/",
+    "!.next/standalone/package-lock.json",
+    "!.next/standalone/tsconfig.json",
+    "!.next/standalone/tsconfig.tsbuildinfo",
+    "!.next/standalone/report.md",
+    "!.next/standalone/README.md",
     ".next/static/",
+    "!.next/static/chunks/*.map",
     "public/",
     "package.json"
   ],
