@@ -77,10 +77,13 @@ function isValidArtifactName(name: string): boolean {
   }
 
   // Reject well-known project config files (without standard extensions)
+  // Also reject common root-level project documentation files (.md files that aren't artifacts)
   const lower = name.toLowerCase();
   const configFiles = [
     'dockerfile', 'makefile', 'procfile', 'gemfile',
     'rakefile', 'vagrantfile', 'jenkinsfile',
+    'readme.md', 'agents.md', 'claude.md', 'contributing.md',
+    'license.md', 'changelog.md', 'code_of_conduct.md'
   ];
   if (configFiles.includes(lower)) return false;
 

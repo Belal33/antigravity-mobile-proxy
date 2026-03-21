@@ -2,7 +2,13 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import type { ChangeFile } from '@/lib/types';
 
 const API_BASE = '/api/v1';
-const POLL_INTERVAL_MS = 5000;
+
+/**
+ * Background polling intervals (ms).
+ * We poll ALWAYS—even when the panel is closed—so the badge count stays fresh.
+ */
+const POLL_FAST_MS  = 3_000;  // panel open
+const POLL_SLOW_MS  = 8_000;  // panel closed (background)
 
 /**
  * Hook for fetching and managing the "Changes Overview" data
@@ -33,17 +39,13 @@ export function useChanges() {
     setChangesPanelOpen(prev => !prev);
   }, []);
 
-  // Poll when panel is open
+  // Always poll — faster when the panel is open, slower in the background
   useEffect(() => {
-    if (changesPanelOpen) {
-      loadChanges();
-      pollingRef.current = setInterval(loadChanges, POLL_INTERVAL_MS);
-    } else {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    }
+    loadChanges();
+
+    const interval = changesPanelOpen ? POLL_FAST_MS : POLL_SLOW_MS;
+    pollingRef.current = setInterval(loadChanges, interval);
+
     return () => {
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
@@ -56,6 +58,6 @@ export function useChanges() {
     changeFiles,
     changesPanelOpen,
     toggleChangesPanel,
-    loadChanges,
+    loadChanges,  // exposed so SSE events can trigger an immediate refresh
   };
 }

@@ -2,11 +2,18 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import type { ArtifactFile } from '@/lib/types';
 
 const API_BASE = '/api/v1';
-const POLL_INTERVAL_MS = 3000;
+
+/**
+ * Background polling interval (ms).
+ * We poll ALWAYS—even when the panel is closed—so the badge count stays fresh.
+ * When the panel is open we use a faster cadence.
+ */
+const POLL_FAST_MS  = 3_000;  // panel open
+const POLL_SLOW_MS  = 8_000;  // panel closed (background)
 
 /**
  * Computes a simple hash string from file metadata to detect changes
- * without unnecessary re-renders (mirrors old app's approach).
+ * without unnecessary re-renders.
  */
 function computeFileHash(files: ArtifactFile[]): string {
   return JSON.stringify(files.map(f => f.name + f.size + f.mtime));
@@ -42,21 +49,13 @@ export function useArtifacts(activeConversationId?: string | null) {
     setArtifactPanelOpen(true);
   }, []);
 
-  // Start/stop polling based on panel visibility
+  // Always poll — faster when the panel is open, slower in the background
   useEffect(() => {
-    if (artifactPanelOpen) {
-      // Fetch immediately when panel opens
-      loadArtifacts();
+    // Fetch immediately on mount / whenever the panel state changes
+    loadArtifacts();
 
-      // Start polling every 3 seconds
-      pollingRef.current = setInterval(loadArtifacts, POLL_INTERVAL_MS);
-    } else {
-      // Stop polling when panel is closed
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    }
+    const interval = artifactPanelOpen ? POLL_FAST_MS : POLL_SLOW_MS;
+    pollingRef.current = setInterval(loadArtifacts, interval);
 
     return () => {
       if (pollingRef.current) {
@@ -69,7 +68,6 @@ export function useArtifacts(activeConversationId?: string | null) {
   // Re-fetch when the active conversation changes
   useEffect(() => {
     if (activeConversationId) {
-      // Reset hash so we always show fresh data for the new conversation
       lastHashRef.current = '';
       loadArtifacts();
     }
@@ -80,6 +78,6 @@ export function useArtifacts(activeConversationId?: string | null) {
     artifactPanelOpen,
     toggleArtifactPanel,
     openArtifactPanel,
-    loadArtifacts
+    loadArtifacts  // exposed so SSE events can trigger an immediate refresh
   };
 }

@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useConversations } from './use-conversations';
 import { useArtifacts } from './use-artifacts';
 import { useChanges } from './use-changes';
+import { useMonitor } from './use-monitor';
 import type { ChatMessage, SSEStep } from '@/lib/types';
 
 const API_BASE = '/api/v1';
@@ -22,6 +23,8 @@ export function useChat() {
   const [currentAgent, setCurrentAgent] = useState<string | null>(null);
   const [agents, setAgents] = useState<{ name: string; active: boolean; description?: string }[]>([]);
   const [isLoadingAgents, setIsLoadingAgents] = useState(false);
+  const [isAgentBusy, setIsAgentBusy] = useState(false);
+  const [isMonitorConnected, setIsMonitorConnected] = useState(false);
   
   const controllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -71,12 +74,12 @@ export function useChat() {
     loadChanges,
   } = useChanges();
 
-  // Auto-open artifact panel and refresh files when a conversation switch completes
+  // Refresh artifact and changes data when a conversation switch completes
+  // (but don't auto-open the panel — let the user decide)
   const handleConversationSwitched = useCallback(() => {
-    openArtifactPanel();
     loadArtifacts();
     loadChanges();
-  }, [openArtifactPanel, loadArtifacts, loadChanges]);
+  }, [loadArtifacts, loadChanges]);
 
   const {
     windows,
@@ -196,7 +199,6 @@ export function useChat() {
 
       case 'thinking':
       case 'hitl':
-      case 'file_change':
       case 'error':
       case 'notification':
         setCurrentSteps(prev => {
@@ -204,6 +206,17 @@ export function useChat() {
           currentStepsRef.current = updated;
           return updated;
         });
+        break;
+
+      case 'file_change':
+        setCurrentSteps(prev => {
+          const updated = [...prev, { type, data }];
+          currentStepsRef.current = updated;
+          return updated;
+        });
+        // Instant refresh: agent just changed a file — update badge counts
+        loadArtifacts();
+        loadChanges();
         break;
 
       case 'response':
@@ -222,10 +235,13 @@ export function useChat() {
         }
         setStatus('connected', 'Agent');
         setIsStreaming(false);
+        // Final refresh: agent finished — ensure badge counts are up-to-date
+        loadArtifacts();
+        loadChanges();
         break;
     }
     scrollToBottom();
-  }, [setStatus, scrollToBottom]);
+  }, [setStatus, scrollToBottom, loadArtifacts, loadChanges]);
 
   const sendMessage = useCallback(async (text: string) => {
     if (isStreaming || !text.trim()) return;
@@ -365,6 +381,61 @@ export function useChat() {
     } catch { /* ignore */ }
   }, []);
 
+  // ── Passive IDE Monitor ──
+  // Detects changes made directly in the IDE (mode switches, messages sent
+  // from the IDE, agent activity started/stopped externally).
+  const isStreamingRef = useRef(isStreaming);
+  isStreamingRef.current = isStreaming;
+
+  const { isMonitoring } = useMonitor({
+    autoConnect: true,
+    onActivityStart: () => {
+      setIsAgentBusy(true);
+      // Only update status if we're not already streaming from sendMessage
+      if (!isStreamingRef.current) {
+        setStatusState('streaming');
+        setStatusText('Agent working...');
+      }
+    },
+    onActivityEnd: () => {
+      setIsAgentBusy(false);
+      if (!isStreamingRef.current) {
+        setStatusState('connected');
+        setStatusText('Agent');
+        // Refresh history, artifacts, and changes since the agent finished
+        fetchHistory();
+        loadArtifacts();
+        loadChanges();
+      }
+    },
+    onTurnChange: () => {
+      // A new turn appeared — someone typed from the IDE directly
+      if (!isStreamingRef.current) {
+        setShowWelcome(false);
+        fetchHistory();
+      }
+    },
+    onModeChange: ({ newMode }) => {
+      setCurrentMode(newMode as 'planning' | 'fast');
+    },
+    onSync: (data) => {
+      // Reconcile state from periodic sync
+      if (typeof data.isRunning === 'boolean') {
+        setIsAgentBusy(data.isRunning as boolean);
+      }
+    },
+    onEvent: (event) => {
+      // Forward relevant events to the current steps if agent is busy externally
+      if (!isStreamingRef.current && (event.type === 'tool_call' || event.type === 'response' || event.type === 'thinking' || event.type === 'hitl' || event.type === 'notification')) {
+        handleSSEvent(event as any);
+      }
+    },
+  });
+
+  useEffect(() => {
+    setIsMonitorConnected(isMonitoring);
+  }, [isMonitoring]);
+
   useEffect(() => {
     checkHealth();
     loadWindows();
@@ -391,6 +462,7 @@ export function useChat() {
     changeFiles, changesPanelOpen,
     currentMode, currentAgent, agents, isLoadingAgents,
     cdpStatus, recentProjects,
+    isAgentBusy, isMonitorConnected,
     sendMessage, startNewChat, approve, reject,
     selectWindow, selectConversation, toggleArtifactPanel, openArtifactPanel,
     toggleChangesPanel,
