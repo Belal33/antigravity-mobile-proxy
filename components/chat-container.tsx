@@ -7,6 +7,7 @@ import MessageList from '@/components/message-list';
 import ChatInput from '@/components/chat-input';
 import ArtifactPanel from '@/components/artifact-panel';
 import ChangesPanel from '@/components/changes-panel';
+import NetworkBanner from '@/components/network-banner';
 import { useEffect } from 'react';
 
 export default function ChatContainer() {
@@ -40,6 +41,8 @@ export default function ChatContainer() {
         onOpenWindow={chat.openNewWindow}
         onCloseWindow={chat.closeWindowByIndex}
       />
+
+      <NetworkBanner networkOnline={chat.networkOnline} isConnected={chat.isConnected} />
 
       <main className="messages-area" role="log" aria-live="polite">
         {chat.isLoadingHistory ? (

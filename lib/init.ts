@@ -8,6 +8,11 @@
  * 2. CDP active but 0 workbench pages (zombie) — wait for pages, then kill+restart.
  * 3. CDP not reachable — Antigravity not running or launched without CDP. Kill+restart.
  * 
+ * Network-level recovery:
+ * A background watchdog polls DNS every few seconds. When the network comes back
+ * after a drop, it sets `initialized = false` and clears `initPromise` so the
+ * next API request (or the next watchdog ping) re-runs the full init flow.
+ * 
  * On Windows, extra settle time is given after killing processes because taskkill /F /T
  * can leave lock files and the process tree takes longer to fully terminate.
  */
@@ -18,6 +23,7 @@ import { getRecentProjects } from './cdp/recent-projects';
 import { logger } from './logger';
 import ctx from './context';
 import { homedir } from 'os';
+import * as dns from 'dns';
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
@@ -29,6 +35,71 @@ const MAX_RECOVERY_ATTEMPTS = 3;
 // Use string concatenation to defeat Turbopack DCE (same technique as process-manager.ts)
 const IS_WIN = (() => { const p = 'plat', f = 'form'; return (process as any)[p + f] === 'win32'; })();
 const POST_RESTART_SETTLE_MS = IS_WIN ? 5000 : 3000;
+
+// ── Network Watchdog ─────────────────────────────────────────────────────────
+/** How often (ms) to probe for network connectivity in the watchdog */
+const WATCHDOG_INTERVAL_MS = 5_000;
+/** DNS host to probe */
+const PROBE_HOST = 'dns.google';
+
+let lastNetworkState: boolean | null = null;  // null = unknown (first run)
+let watchdogTimer: NodeJS.Timeout | null = null;
+
+/**
+ * Probe network reachability via a DNS lookup.
+ * Returns true if the network is up, false if down.
+ */
+function probeNetwork(): Promise<boolean> {
+  return new Promise((resolve) => {
+    dns.lookup(PROBE_HOST, (err) => resolve(!err));
+  });
+}
+
+/**
+ * Start the background network watchdog.
+ * When the network transitions from DOWN → UP, the CDP connection is re-initialized.
+ * Safe to call multiple times — it only starts one watchdog.
+ */
+export function startNetworkWatchdog() {
+  if (watchdogTimer) return; // already running
+
+  const tick = async () => {
+    if (watchdogTimer === null) return; // stopped externally
+
+    const online = await probeNetwork();
+
+    if (online && lastNetworkState === false) {
+      // Network just came back!
+      logger.info('[Network] Connectivity restored. Triggering CDP reconnect...');
+      resetInitState();
+      // Fire-and-forget: attempt reconnect now so the next request doesn't have to wait
+      ensureCdpConnection().catch((e) => {
+        logger.warn(`[Network] Post-recovery CDP init failed: ${e.message}`);
+      });
+    }
+
+    if (!online && lastNetworkState !== false) {
+      logger.warn('[Network] Connectivity lost. Will attempt CDP reconnect when network returns.');
+      // Mark as disconnected so repeated polls don't spam logs
+      initialized = false;
+      initPromise = null;
+    }
+
+    lastNetworkState = online;
+    watchdogTimer = setTimeout(tick, WATCHDOG_INTERVAL_MS);
+  };
+
+  // Start with a small delay so the server boots first
+  watchdogTimer = setTimeout(tick, 2_000);
+  logger.info('[Network] Watchdog started (polling every 5s).');
+}
+
+/** Stop the watchdog (useful in tests) */
+export function stopNetworkWatchdog() {
+  if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
+}
+
+// ── CDP Init ─────────────────────────────────────────────────────────────────
 
 /**
  * Determine the best project directory to open when auto-recovery restarts Antigravity.
@@ -51,6 +122,18 @@ function getDefaultProjectDir(): string {
   const fallback = homedir();
   logger.info(`[CDP Init] No recent projects found, using home dir: ${fallback}`);
   return fallback;
+}
+
+/** Reset init state so the next call to ensureCdpConnection performs a full init */
+function resetInitState() {
+  initialized = false;
+  initPromise = null;
+  if (ctx.browser) {
+    try { ctx.browser.disconnect(); } catch {}
+    ctx.browser = null;
+    ctx.workbenchPage = null;
+    ctx.allWorkbenches = [];
+  }
 }
 
 export async function ensureCdpConnection(): Promise<void> {

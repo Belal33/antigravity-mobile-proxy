@@ -626,7 +626,6 @@ function startServer({ email, port, authtoken, noTunnel }) {
             serverStarted = true;
             clearLine();
             console.log(`  ${fmt.success('Server running on port ' + port)}`);
-
             if (!noTunnel) {
               startTunnel({ port, email, authtoken, projectRoot: packageRoot });
             } else {
@@ -648,7 +647,6 @@ function startServer({ email, port, authtoken, noTunnel }) {
             console.log(`  ${fmt.dim('[next]')} ${line}`);
           }
         });
-
 
         nextServer.on('close', (exitCode) => {
           console.log(`\n  ${fmt.dim('Next.js server stopped.')}`);
@@ -682,32 +680,135 @@ function startServer({ email, port, authtoken, noTunnel }) {
   }
 }
 
-// ── Start ngrok Tunnel ──────────────────────────────────────────────────
-async function startTunnel({ port, email, authtoken, projectRoot }) {
-  process.stdout.write(`  ${fmt.dim('▸ Opening ngrok tunnel...')}`);
+// ── Tunnel Manager ───────────────────────────────────────────────────────────
+// Stateful ngrok controller with automatic reconnect + network recovery.
 
-  try {
-    // Try loading ngrok from the project's node_modules first
-    let ngrok;
-    const localNgrok = path.join(projectRoot, 'node_modules', '@ngrok', 'ngrok');
-    try {
-      ngrok = require(localNgrok);
-    } catch {
-      ngrok = require('@ngrok/ngrok');
+const dns = require('dns');
+
+const TUNNEL_INITIAL_BACKOFF_MS = 2_000;
+const TUNNEL_MAX_BACKOFF_MS     = 60_000;
+const TUNNEL_BACKOFF_MULTIPLIER = 1.8;
+const TUNNEL_NETWORK_POLL_MS    = 3_000;
+const TUNNEL_PROBE_HOST         = 'dns.google';
+
+function probeNetwork() {
+  return new Promise((resolve) => {
+    dns.lookup(TUNNEL_PROBE_HOST, (err) => resolve(!err));
+  });
+}
+
+function waitForNetwork() {
+  return new Promise((resolve) => {
+    const check = async () => {
+      const online = await probeNetwork();
+      if (online) { resolve(); } else { setTimeout(check, TUNNEL_NETWORK_POLL_MS); }
+    };
+    check();
+  });
+}
+
+class TunnelManager {
+  constructor({ port, email, authtoken, projectRoot }) {
+    this.port        = port;
+    this.email       = email;
+    this.authtoken   = authtoken;
+    this.projectRoot = projectRoot;
+    this.ngrok       = this._loadNgrok();
+    this.listener    = null;
+    this.url         = null;
+    this.attempt     = 0;
+    this.backoff     = TUNNEL_INITIAL_BACKOFF_MS;
+    this.destroyed   = false;
+    this._reconnectTimer = null;
+  }
+
+  _loadNgrok() {
+    const localNgrok = path.join(this.projectRoot, 'node_modules', '@ngrok', 'ngrok');
+    try { return require(localNgrok); } catch { return require('@ngrok/ngrok'); }
+  }
+
+  async start() {
+    await this._connect();
+  }
+
+  async _connect() {
+    if (this.destroyed) return;
+
+    if (this.attempt === 0) {
+      process.stdout.write(`  ${fmt.dim('▸ Opening ngrok tunnel...')}`);
+    } else {
+      console.log(`  ${fmt.yellow(`⟳ Reconnecting ngrok… (attempt ${this.attempt})`)} `);
     }
 
-    const listener = await ngrok.forward({
-      addr: parseInt(port, 10),
-      authtoken: authtoken,
-      oauth_provider: 'google',
-      oauth_allow_emails: email,
-    });
+    try {
+      this.listener = await this.ngrok.forward({
+        addr:               parseInt(this.port, 10),
+        authtoken:          this.authtoken,
+        oauth_provider:     'google',
+        oauth_allow_emails: this.email,
 
-    clearLine();
+        // Built-in ngrok disconnect callback
+        on_status_change: (addr, error) => {
+          if (this.destroyed) return;
+          const reason = error || 'connection lost';
+          this._onDropped(reason);
+        },
+      });
+
+      this.url = this.listener.url();
+      this.backoff = TUNNEL_INITIAL_BACKOFF_MS; // reset on success
+
+      clearLine();
+      this._printConnected(this.url);
+
+    } catch (err) {
+      clearLine();
+
+      const isAuthErr = err.message && (
+        err.message.includes('authtoken') ||
+        err.message.includes('ERR_NGROK_')
+      );
+
+      if (isAuthErr) {
+        // Auth errors are fatal — don't retry.
+        console.log(`  ${fmt.error('ngrok tunnel failed (auth error)!')}`);
+        console.log(`  ${fmt.red(err.message)}`);
+        console.log('');
+        console.log(`  ${fmt.warn('Your authtoken may be invalid or expired.')}`);
+        console.log(`  ${fmt.dim('Get a new one at:')} ${fmt.link('https://dashboard.ngrok.com/authtokens')}`);
+        console.log(`  ${fmt.dim('Then run:')} ${fmt.cyan('npx antigravity-mobile-proxy --reset')}`);
+        return;
+      }
+
+      // Transient error — schedule reconnect
+      this._onDropped(err.message || 'connection error');
+    }
+  }
+
+  _onDropped(reason) {
+    if (this.destroyed) return;
+
+    if (this.url) {
+      console.log(`\n  ${fmt.warn(`ngrok tunnel dropped: ${reason}`)}`);
+      this.url = null;
+      this.listener = null;
+    }
+
+    this.attempt++;
+    const delay = this.backoff;
+    this.backoff = Math.min(this.backoff * TUNNEL_BACKOFF_MULTIPLIER, TUNNEL_MAX_BACKOFF_MS);
+
+    console.log(`  ${fmt.dim(`Will reconnect in ${Math.round(delay / 1000)}s (attempt ${this.attempt})… waiting for network`)}`);
+
+    this._reconnectTimer = setTimeout(async () => {
+      if (this.destroyed) return;
+      await waitForNetwork();      // Block until network is alive again
+      if (!this.destroyed) await this._connect();
+    }, delay);
+  }
+
+  _printConnected(url) {
     console.log(`  ${fmt.success('ngrok tunnel established')}`);
-
-    const url = listener.url();
-
     console.log('');
     console.log(`  ${c.bold}${c.cyan}╔═══════════════════════════════════════════════════════╗${c.reset}`);
     console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
@@ -715,28 +816,31 @@ async function startTunnel({ port, email, authtoken, projectRoot }) {
     console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
     console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${url} ${' '.repeat(Math.max(0, 39 - url.length))}${c.bold}${c.cyan}║${c.reset}`);
     console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
-    console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${c.dim}🔒 Google OAuth → ${email}${' '.repeat(Math.max(0, 23 - email.length))}${c.reset}${c.bold}${c.cyan}║${c.reset}`);
+    console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${c.dim}🔒 Google OAuth → ${this.email}${' '.repeat(Math.max(0, 23 - this.email.length))}${c.reset}${c.bold}${c.cyan}║${c.reset}`);
     console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
     console.log(`  ${c.bold}${c.cyan}╚═══════════════════════════════════════════════════════╝${c.reset}`);
     console.log('');
     console.log(`  ${fmt.dim('Press Ctrl+C to stop.')}`);
     console.log('');
+  }
 
-  } catch (err) {
+  async stop() {
+    this.destroyed = true;
+    if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); }
+    if (this.listener) { try { await this.listener.close(); } catch {} }
+    try { await this.ngrok.disconnect(); } catch {}
+  }
+}
+
+// ── Start ngrok Tunnel ──────────────────────────────────────────────────
+function startTunnel({ port, email, authtoken, projectRoot }) {
+  const mgr = new TunnelManager({ port, email, authtoken, projectRoot });
+  mgr.start().catch((err) => {
     clearLine();
     console.log(`  ${fmt.error('ngrok tunnel failed!')}`);
-    console.log('');
     console.log(`  ${fmt.red(err.message)}`);
-
-    if (err.message.includes('authtoken') || err.message.includes('ERR_NGROK_')) {
-      console.log('');
-      console.log(`  ${fmt.warn('Your authtoken may be invalid or expired.')}`);
-      console.log(`  ${fmt.dim('Get a new one at:')} ${fmt.link('https://dashboard.ngrok.com/authtokens')}`);
-      console.log(`  ${fmt.dim('Then run:')} ${fmt.cyan('npx antigravity-mobile-proxy --reset')}`);
-    }
-
-    console.log('');
-  }
+  });
+  return mgr; // returned so cleanup can call mgr.stop()
 }
 
 function printLocalOnly(port) {

@@ -27,6 +27,21 @@ export function useChat() {
   const [isLoadingAgents, setIsLoadingAgents] = useState(false);
   const [isAgentBusy, setIsAgentBusy] = useState(false);
   const [isMonitorConnected, setIsMonitorConnected] = useState(false);
+
+  // ── Network Online/Offline detection (browser-native events) ──
+  const [networkOnline, setNetworkOnline] = useState(true);
+  useEffect(() => {
+    // Initialise from browser's current state
+    setNetworkOnline(navigator.onLine);
+    const handleOnline  = () => setNetworkOnline(true);
+    const handleOffline = () => setNetworkOnline(false);
+    window.addEventListener('online',  handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online',  handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
   
   const controllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -47,20 +62,31 @@ export function useChat() {
     setStatusText(text);
   }, []);
 
-  // ── SWR-powered health check (replaces setInterval 30s) ──
-  const { data: healthData } = useSWR(SWR_KEYS.health, fetcher, {
-    refreshInterval: 30000,
+  // ── SWR-powered health check ──
+  // Poll every 5s when offline to detect recovery quickly; 30s otherwise.
+  const { data: healthData, mutate: mutateHealth } = useSWR(SWR_KEYS.health, fetcher, {
+    refreshInterval: networkOnline ? 30000 : 5000,
     revalidateOnFocus: true,
     revalidateOnReconnect: true,
     onSuccess: (data) => {
       setIsConnected(data.connected);
-      setStatus(data.connected ? 'connected' : 'disconnected', data.connected ? 'Agent' : 'Disconnected');
+      if (!networkOnline) setNetworkOnline(true); // server responded ⟹ network back
+      setStatus(
+        data.connected ? 'connected' : 'disconnected',
+        data.connected ? 'Agent' : (data.network === false ? 'Offline' : 'Reconnecting…')
+      );
     },
     onError: () => {
       setIsConnected(false);
-      setStatus('disconnected', 'Offline');
+      setStatus('disconnected', networkOnline ? 'Reconnecting…' : 'Offline');
     },
   });
+
+  // When the browser reports we're back online, immediately revalidate health
+  useEffect(() => {
+    if (networkOnline) mutateHealth();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [networkOnline]);
 
   // ── SWR-powered mode fetch ──
   const { mutate: mutateMode } = useSWR(SWR_KEYS.mode, fetcher, {
@@ -467,6 +493,7 @@ export function useChat() {
     currentMode, currentAgent, agents, isLoadingAgents,
     cdpStatus, recentProjects,
     isAgentBusy, isMonitorConnected,
+    networkOnline,
     sendMessage, startNewChat, approve, reject,
     selectWindow, selectConversation, toggleArtifactPanel, openArtifactPanel,
     toggleChangesPanel,

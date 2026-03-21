@@ -4,6 +4,10 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // Enable instrumentation.ts — runs on server startup (network watchdog, etc.)
+  experimental: {
+    instrumentationHook: true,
+  },
   // Fix 1: puppeteer is on Next.js's default auto-external list, which causes
   // Turbopack to mangle the module name with a content hash in standalone
   // builds, making it unresolvable. transpilePackages forces it to be
