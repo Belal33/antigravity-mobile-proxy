@@ -34,14 +34,28 @@ export async function POST(request: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      const writeEvent = (type: string, data: Record<string, unknown>) => {
+      let eventId = 0;
+
+      const writeRaw = (text: string) => {
         try {
-          const payload = JSON.stringify({ ...data, type });
-          controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+          controller.enqueue(encoder.encode(text));
         } catch {
           // Controller may already be closed
         }
       };
+
+      const writeEvent = (type: string, data: Record<string, unknown>) => {
+        try {
+          const payload = JSON.stringify({ ...data, type });
+          // Include SSE `id:` field so browsers can resume with Last-Event-ID
+          writeRaw(`id: ${++eventId}\ndata: ${payload}\n\n`);
+        } catch {
+          // Controller may already be closed
+        }
+      };
+
+      // Send retry advisory once: tell browser to reconnect after 3s if dropped
+      writeRaw('retry: 3000\n\n');
 
       let closed = false;
       const closeStream = () => {
@@ -49,6 +63,15 @@ export async function POST(request: NextRequest) {
         closed = true;
         try { controller.close(); } catch { /* already closed */ }
       };
+
+      // Heartbeat: send a comment ping every 15s to prevent proxy/firewall
+      // from closing idle SSE connections (many proxies have a 30-120s timeout).
+      // SSE comments (lines starting with ':') are ignored by EventSource/fetch
+      // consumers but reset the TCP keep-alive timer.
+      const heartbeat = setInterval(() => {
+        if (closed) { clearInterval(heartbeat); return; }
+        writeRaw(': ping\n\n');
+      }, 5000);
 
       try {
         writeEvent('status', { isRunning: true, phase: 'sending' });
@@ -149,7 +172,7 @@ export async function POST(request: NextRequest) {
                 (currState.responses.length > 0 &&
                   prevState.responses.length > 0 &&
                   currState.responses[currState.responses.length - 1] !==
-                    prevState.responses[prevState.responses.length - 1]) ||
+                  prevState.responses[prevState.responses.length - 1]) ||
                 currState.lastTurnResponseHTML !== prevState.lastTurnResponseHTML;
 
               if (contentChanged) {
@@ -238,10 +261,12 @@ export async function POST(request: NextRequest) {
         // Handle client disconnect
         request.signal.addEventListener('abort', () => {
           clearInterval(interval);
+          clearInterval(heartbeat);
           closeStream();
         });
       } catch (e: any) {
         writeEvent('error', { message: e.message });
+        clearInterval(heartbeat);
         closeStream();
       }
     },
@@ -250,8 +275,10 @@ export async function POST(request: NextRequest) {
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      // Disable response buffering on Nginx/proxies so events flush immediately
+      'X-Accel-Buffering': 'no',
     },
   });
 }

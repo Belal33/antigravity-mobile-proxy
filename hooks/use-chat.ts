@@ -245,31 +245,73 @@ export function useChat() {
     controllerRef.current = controller;
 
     try {
-      const res = await fetch(`${API_BASE}/chat/stream`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: trimmed }),
-        signal: controller.signal,
-      });
+      let lastEventId = '';
+      let attempt = 0;
+      const MAX_RETRIES = 5;
+      const RETRY_DELAY_MS = 2000;
 
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
+      while (attempt <= MAX_RETRIES) {
+        let streamEnded = false;
+        try {
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (lastEventId) headers['Last-Event-ID'] = lastEventId;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+          const res = await fetch(`${API_BASE}/chat/stream`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ message: trimmed }),
+            signal: controller.signal,
+          });
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop()!;
+          const reader = res.body!.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let gotDone = false;
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const payload = JSON.parse(line.slice(6));
-            handleSSEvent(payload);
-          } catch { /* skip */ }
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) { streamEnded = true; break; }
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop()!;
+
+            for (const line of lines) {
+              // SSE comment (heartbeat ping) — ignore
+              if (line.startsWith(':')) continue;
+              // Track Last-Event-ID for reconnect
+              if (line.startsWith('id: ')) {
+                lastEventId = line.slice(4).trim();
+                continue;
+              }
+              // Reconnect advisory — no action needed (server already sets it)
+              if (line.startsWith('retry:')) continue;
+              if (!line.startsWith('data: ')) continue;
+              try {
+                const payload = JSON.parse(line.slice(6));
+                handleSSEvent(payload);
+                if (payload.type === 'done') gotDone = true;
+              } catch { /* skip malformed */ }
+            }
+
+            if (gotDone) break;
+          }
+
+          // Clean exit — done event received or stream finished normally
+          if (gotDone || !streamEnded) break;
+
+          // Stream ended unexpectedly without a `done` event — reconnect
+          attempt++;
+          if (attempt > MAX_RETRIES) break;
+          console.warn(`[SSE] Stream dropped (attempt ${attempt}/${MAX_RETRIES}), reconnecting in ${RETRY_DELAY_MS}ms...`);
+          await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+
+        } catch (e: any) {
+          if (e.name === 'AbortError') throw e; // User cancelled — don't retry
+          attempt++;
+          if (attempt > MAX_RETRIES) throw e;
+          console.warn(`[SSE] Fetch error (attempt ${attempt}/${MAX_RETRIES}):`, e.message);
+          await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
         }
       }
     } catch (e: any) {
