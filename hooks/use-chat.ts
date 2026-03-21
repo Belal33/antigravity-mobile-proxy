@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import useSWR, { useSWRConfig } from 'swr';
 import { useConversations } from './use-conversations';
 import { useArtifacts } from './use-artifacts';
 import { useChanges } from './use-changes';
 import { useMonitor } from './use-monitor';
 import type { ChatMessage, SSEStep } from '@/lib/types';
+import { fetcher, SWR_KEYS } from '@/lib/swr-fetcher';
 
 const API_BASE = '/api/v1';
 
@@ -31,6 +33,9 @@ export function useChat() {
   const currentResponseRef = useRef('');
   const currentStepsRef = useRef<SSEStep[]>([]);
 
+  // Global mutate for revalidating any SWR key from anywhere
+  const { mutate: globalMutate } = useSWRConfig();
+
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -42,22 +47,61 @@ export function useChat() {
     setStatusText(text);
   }, []);
 
-  const fetchHistory = useCallback(async () => {
-    setIsLoadingHistory(true);
-    setMessages([]); // Clear existing messages immediately
-    try {
-      const res = await fetch(`${API_BASE}/chat/history`);
-      const data = await res.json();
+  // ── SWR-powered health check (replaces setInterval 30s) ──
+  const { data: healthData } = useSWR(SWR_KEYS.health, fetcher, {
+    refreshInterval: 30000,
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    onSuccess: (data) => {
+      setIsConnected(data.connected);
+      setStatus(data.connected ? 'connected' : 'disconnected', data.connected ? 'Agent' : 'Disconnected');
+    },
+    onError: () => {
+      setIsConnected(false);
+      setStatus('disconnected', 'Offline');
+    },
+  });
+
+  // ── SWR-powered mode fetch ──
+  const { mutate: mutateMode } = useSWR(SWR_KEYS.mode, fetcher, {
+    revalidateOnFocus: false,
+    onSuccess: (data) => {
+      if (data.mode) setCurrentMode(data.mode);
+    },
+  });
+
+  // ── SWR-powered agent fetch ──
+  const { mutate: mutateAgent } = useSWR(SWR_KEYS.agent, fetcher, {
+    revalidateOnFocus: false,
+    onSuccess: (data) => {
+      if (data.agent) setCurrentAgent(data.agent);
+    },
+  });
+
+  // ── SWR-powered history fetch ──
+  const { mutate: mutateHistory } = useSWR(SWR_KEYS.history, fetcher, {
+    revalidateOnFocus: false,
+    revalidateOnMount: true,
+    onSuccess: (data) => {
+      setIsLoadingHistory(false);
       if (data.turns && data.turns.length > 0) {
         setShowWelcome(false);
         setMessages(data.turns.map((t: any) => ({ role: t.role, content: t.content })));
       } else {
         setShowWelcome(true);
       }
-    } catch { /* ignore */ } finally {
+    },
+    onError: () => {
       setIsLoadingHistory(false);
-    }
-  }, []);
+    },
+  });
+
+  // Imperative fetchHistory — triggers SWR revalidation
+  const fetchHistory = useCallback(() => {
+    setIsLoadingHistory(true);
+    setMessages([]); // Clear existing messages immediately
+    mutateHistory();
+  }, [mutateHistory]);
 
   const {
     artifactFiles,
@@ -98,15 +142,6 @@ export function useChat() {
     loadRecentProjects,
   } = useConversations(fetchHistory, setShowWelcome, handleConversationSwitched);
 
-
-  const fetchMode = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/chat/mode`);
-      const data = await res.json();
-      if (data.mode) setCurrentMode(data.mode);
-    } catch { /* ignore */ }
-  }, []);
-
   const toggleMode = useCallback(async () => {
     const newMode = currentMode === 'planning' ? 'fast' : 'planning';
     setCurrentMode(newMode); // Optimistic update
@@ -118,18 +153,12 @@ export function useChat() {
       });
       const data = await res.json();
       if (data.mode) setCurrentMode(data.mode);
+      // Revalidate the SWR cache for mode
+      mutateMode();
     } catch {
       setCurrentMode(currentMode); // Rollback on error
     }
-  }, [currentMode]);
-
-  const fetchAgent = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/chat/agent`);
-      const data = await res.json();
-      if (data.agent) setCurrentAgent(data.agent);
-    } catch { /* ignore */ }
-  }, []);
+  }, [currentMode, mutateMode]);
 
   const fetchAgentList = useCallback(async () => {
     setIsLoadingAgents(true);
@@ -158,22 +187,12 @@ export function useChat() {
       const data = await res.json();
       if (data.agent) setCurrentAgent(data.agent);
       else if (!data.success) setCurrentAgent(prevAgent); // Rollback
+      // Revalidate agent cache
+      mutateAgent();
     } catch {
       setCurrentAgent(prevAgent); // Rollback on error
     }
-  }, [currentAgent]);
-
-  const checkHealth = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/health`);
-      const data = await res.json();
-      setIsConnected(data.connected);
-      setStatus(data.connected ? 'connected' : 'disconnected', data.connected ? 'Agent' : 'Disconnected');
-    } catch {
-      setIsConnected(false);
-      setStatus('disconnected', 'Offline');
-    }
-  }, [setStatus]);
+  }, [currentAgent, mutateAgent]);
 
   const handleSSEvent = useCallback((payload: any) => {
     const { type, ...data } = payload;
@@ -403,7 +422,7 @@ export function useChat() {
         setStatusState('connected');
         setStatusText('Agent');
         // Refresh history, artifacts, and changes since the agent finished
-        fetchHistory();
+        mutateHistory();
         loadArtifacts();
         loadChanges();
       }
@@ -412,7 +431,7 @@ export function useChat() {
       // A new turn appeared — someone typed from the IDE directly
       if (!isStreamingRef.current) {
         setShowWelcome(false);
-        fetchHistory();
+        mutateHistory();
       }
     },
     onModeChange: ({ newMode }) => {
@@ -436,23 +455,8 @@ export function useChat() {
     setIsMonitorConnected(isMonitoring);
   }, [isMonitoring]);
 
-  useEffect(() => {
-    checkHealth();
-    loadWindows();
-    fetchHistory();
-    loadConversations();
-    loadArtifacts();
-    fetchMode();
-    fetchAgent();
-    checkCdpStatus();
-    loadRecentProjects();
-
-    // Passive polling for health and CDP status
-    const healthTimer = setInterval(checkHealth, 30000);
-    const cdpTimer = setInterval(checkCdpStatus, 15000);
-    return () => { clearInterval(healthTimer); clearInterval(cdpTimer); };
-  }, [checkHealth, loadWindows, fetchHistory, loadConversations, loadArtifacts, fetchMode, fetchAgent, checkCdpStatus, loadRecentProjects]);
-
+  // ── No more large init useEffect! ──
+  // SWR hooks above auto-fetch on mount. We only need the scroll effect.
   useEffect(scrollToBottom, [messages, currentSteps, currentResponse, scrollToBottom]);
 
   return {

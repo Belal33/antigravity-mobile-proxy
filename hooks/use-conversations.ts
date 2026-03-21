@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
+import useSWR from 'swr';
 import type { WindowInfo, ConversationInfo } from '@/lib/types';
-
-const API_BASE = '/api/v1';
+import { fetcher, SWR_KEYS } from '@/lib/swr-fetcher';
 
 export interface CdpStatus {
   active: boolean;
@@ -15,40 +15,40 @@ export interface RecentProject {
   lastOpened: string;
 }
 
+const API_BASE = '/api/v1';
+
 export function useConversations(
-  fetchHistory: () => Promise<void>,
+  fetchHistory: () => void,
   setShowWelcome: (s: boolean) => void,
   onConversationSwitched?: () => void
 ) {
-  const [windows, setWindows] = useState<WindowInfo[]>([]);
-  const [conversations, setConversations] = useState<ConversationInfo[]>([]);
-  const [activeConversation, setActiveConversation] = useState<ConversationInfo | null>(null);
-  const [cdpStatus, setCdpStatus] = useState<CdpStatus>({ active: false, windowCount: 0 });
-  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
+  // ── SWR-powered read-only data ──
+  const { data: windowsData, mutate: mutateWindows } = useSWR<{ windows?: WindowInfo[] }>(
+    SWR_KEYS.windows, fetcher, { revalidateOnFocus: true }
+  );
+  const windows: WindowInfo[] = windowsData?.windows || [];
 
-  const loadWindows = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/windows`);
-      const data = await res.json();
-      setWindows(data.windows || []);
-    } catch { /* ignore */ }
-  }, []);
+  const { data: cdpData, mutate: mutateCdpStatus } = useSWR<{ active: boolean; windowCount: number; error?: string | null }>(
+    SWR_KEYS.cdpStatus, fetcher, { refreshInterval: 15000, revalidateOnFocus: true }
+  );
+  const cdpStatus: CdpStatus = {
+    active: cdpData?.active ?? false,
+    windowCount: cdpData?.windowCount ?? 0,
+    error: cdpData?.error ?? null,
+  };
 
-  const checkCdpStatus = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/windows/cdp-status`);
-      const data = await res.json();
-      setCdpStatus({
-        active: data.active,
-        windowCount: data.windowCount,
-        error: data.error,
-      });
-      return data.active;
-    } catch {
-      setCdpStatus({ active: false, windowCount: 0, error: 'Failed to check' });
-      return false;
-    }
-  }, []);
+  const { data: convsData, mutate: mutateConversations } = useSWR<{ conversations?: ConversationInfo[] }>(
+    SWR_KEYS.conversations, fetcher, { revalidateOnFocus: true }
+  );
+  const conversations: ConversationInfo[] = convsData?.conversations || [];
+  const activeConversation: ConversationInfo | null = conversations.find((c) => c.active) || null;
+
+  const { data: recentData, mutate: mutateRecentProjects } = useSWR<{ recentProjects?: RecentProject[] }>(
+    SWR_KEYS.recentProjects, fetcher, { revalidateOnFocus: true }
+  );
+  const recentProjects: RecentProject[] = recentData?.recentProjects || [];
+
+  // ── Mutations (POST actions) — revalidate SWR caches on success ──
 
   const startCdpServer = useCallback(async (projectDir?: string, killExisting?: boolean) => {
     try {
@@ -59,14 +59,14 @@ export function useConversations(
       });
       const data = await res.json();
       if (data.success) {
-        await checkCdpStatus();
-        await loadWindows();
+        mutateCdpStatus();
+        mutateWindows();
       }
       return data;
     } catch (e: any) {
       return { success: false, message: e.message || 'Failed to start CDP server' };
     }
-  }, [checkCdpStatus, loadWindows]);
+  }, [mutateCdpStatus, mutateWindows]);
 
   const openNewWindow = useCallback(async (projectDir: string) => {
     try {
@@ -77,15 +77,14 @@ export function useConversations(
       });
       const data = await res.json();
       if (data.success) {
-        // Refresh window list after opening
-        await loadWindows();
-        await checkCdpStatus();
+        mutateWindows();
+        mutateCdpStatus();
       }
       return data;
     } catch (e: any) {
       return { success: false, message: e.message || 'Failed to open window' };
     }
-  }, [loadWindows, checkCdpStatus]);
+  }, [mutateWindows, mutateCdpStatus]);
 
   const closeWindowByIndex = useCallback(async (index: number) => {
     try {
@@ -96,27 +95,14 @@ export function useConversations(
       });
       const data = await res.json();
       if (data.success) {
-        await loadWindows();
-        await checkCdpStatus();
+        mutateWindows();
+        mutateCdpStatus();
       }
       return data;
     } catch (e: any) {
       return { success: false, message: e.message || 'Failed to close window' };
     }
-  }, [loadWindows, checkCdpStatus]);
-
-  const loadConversations = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/conversations`);
-      const data = await res.json();
-      const convs: ConversationInfo[] = data.conversations || [];
-      setConversations(convs);
-      const active = convs.find((c) => c.active);
-      if (active) {
-        setActiveConversation(active);
-      }
-    } catch { /* ignore */ }
-  }, []);
+  }, [mutateWindows, mutateCdpStatus]);
 
   const selectWindow = useCallback(async (idx: number) => {
     try {
@@ -127,15 +113,15 @@ export function useConversations(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ index: idx }),
       });
-      await loadWindows();
+      mutateWindows();
       // Fetch the new window's chat history
-      await fetchHistory();
+      fetchHistory();
       // Refresh conversations list for the new window
-      await loadConversations();
+      mutateConversations();
       // Notify parent (for artifact sync etc.)
       onConversationSwitched?.();
     } catch { /* ignore */ }
-  }, [loadWindows, fetchHistory, setShowWelcome, loadConversations, onConversationSwitched]);
+  }, [mutateWindows, fetchHistory, setShowWelcome, mutateConversations, onConversationSwitched]);
 
   const selectConversation = useCallback(async (title: string) => {
     try {
@@ -151,14 +137,15 @@ export function useConversations(
         const poll = async () => {
           attempts++;
           try {
+            // Re-fetch conversations to see if active one has switched
             const resList = await fetch(`${API_BASE}/conversations`);
             const dList = await resList.json();
             const convs = dList.conversations || [];
             const active = convs.find((c: any) => c.active);
             if ((active && active.title === title) || attempts > 10) {
-              setConversations(convs);
-              if (active) setActiveConversation(active);
-              await fetchHistory();
+              // Update the SWR cache with this fresh data
+              mutateConversations({ conversations: convs }, { revalidate: false });
+              fetchHistory();
               // Notify parent that the switch is complete (for artifact sync)
               onConversationSwitched?.();
               return;
@@ -169,15 +156,13 @@ export function useConversations(
         poll();
       }
     } catch { /* ignore */ }
-  }, [fetchHistory, setShowWelcome, onConversationSwitched]);
+  }, [fetchHistory, setShowWelcome, mutateConversations, onConversationSwitched]);
 
-  const loadRecentProjects = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/windows/recent`);
-      const data = await res.json();
-      setRecentProjects(data.recentProjects || []);
-    } catch { /* ignore */ }
-  }, []);
+  // ── Expose imperative refresh functions (backwards-compatible names) ──
+  const loadWindows = mutateWindows;
+  const loadConversations = mutateConversations;
+  const checkCdpStatus = mutateCdpStatus;
+  const loadRecentProjects = mutateRecentProjects;
 
   return {
     windows,
