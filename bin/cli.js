@@ -747,6 +747,9 @@ class TunnelManager {
         oauth_provider:     'google',
         oauth_allow_emails: this.email,
 
+        // Keep the same URL across reconnections (prevents ERR_NGROK_3200)
+        pooling_enabled:    true,
+
         // Built-in ngrok disconnect callback
         on_status_change: (addr, error) => {
           if (this.destroyed) return;
@@ -764,12 +767,13 @@ class TunnelManager {
     } catch (err) {
       clearLine();
 
-      const isAuthErr = err.message && (
+      // Only real auth errors are fatal — NOT endpoint conflicts (ERR_NGROK_334)
+      const isFatalAuth = err.message && (
         err.message.includes('authtoken') ||
-        err.message.includes('ERR_NGROK_')
+        err.message.includes('authentication')
       );
 
-      if (isAuthErr) {
+      if (isFatalAuth) {
         // Auth errors are fatal — don't retry.
         console.log(`  ${fmt.error('ngrok tunnel failed (auth error)!')}`);
         console.log(`  ${fmt.red(err.message)}`);
@@ -780,7 +784,7 @@ class TunnelManager {
         return;
       }
 
-      // Transient error — schedule reconnect
+      // Transient error (including ERR_NGROK_334 endpoint conflict) — schedule reconnect
       this._onDropped(err.message || 'connection error');
     }
   }
@@ -788,11 +792,20 @@ class TunnelManager {
   _onDropped(reason) {
     if (this.destroyed) return;
 
-    if (this.url) {
-      console.log(`\n  ${fmt.warn(`ngrok tunnel dropped: ${reason}`)}`);
-      this.url = null;
+    // Guard: prevent duplicate reconnects if on_status_change fires multiple times
+    if (this._reconnectTimer) return;
+
+    console.log(`\n  ${fmt.warn(`ngrok tunnel dropped: ${reason}`)}`);
+
+    // Fully tear down old session so ngrok's servers release the endpoint.
+    // Without this, the old endpoint stays registered and the next forward()
+    // hits ERR_NGROK_334 ("endpoint already exists").
+    if (this.listener) {
+      try { this.listener.close(); } catch {}
       this.listener = null;
     }
+    this.url = null;
+    try { this.ngrok.disconnect(); } catch {}
 
     this.attempt++;
     const delay = this.backoff;
@@ -801,6 +814,7 @@ class TunnelManager {
     console.log(`  ${fmt.dim(`Will reconnect in ${Math.round(delay / 1000)}s (attempt ${this.attempt})… waiting for network`)}`);
 
     this._reconnectTimer = setTimeout(async () => {
+      this._reconnectTimer = null;
       if (this.destroyed) return;
       await waitForNetwork();      // Block until network is alive again
       if (!this.destroyed) await this._connect();
