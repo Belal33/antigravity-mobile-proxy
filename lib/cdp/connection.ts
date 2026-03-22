@@ -43,7 +43,21 @@ export async function discoverWorkbenches(ctx: ProxyContext) {
     const url = p.url();
     if (url.includes('workbench.html') && !url.includes('jetski')) {
       const title = await p.title();
-      ctx.allWorkbenches.push({ page: p, title, url });
+      // Get the stable CDP target ID directly from the Puppeteer page's
+      // internal target object. This is a unique identifier that stays
+      // stable regardless of page ordering, unlike positional indices.
+      let targetId: string | undefined;
+      try {
+        targetId = (p.target() as any)?._targetId;
+      } catch {
+        // Non-fatal — close-by-targetId will just be unavailable
+      }
+      ctx.allWorkbenches.push({
+        page: p,
+        title,
+        url,
+        targetId,
+      });
     }
   }
   return ctx.allWorkbenches;

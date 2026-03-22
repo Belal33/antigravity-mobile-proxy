@@ -86,12 +86,16 @@ export function useConversations(
     }
   }, [mutateWindows, mutateCdpStatus]);
 
-  const closeWindowByIndex = useCallback(async (index: number) => {
+  const closeWindowByIndex = useCallback(async (index: number, targetId?: string) => {
     try {
+      // Prefer targetId (stable CDP identifier) over positional index
+      // to avoid the ordering mismatch between Puppeteer's browser.pages()
+      // and the raw CDP /json endpoint.
+      const body = targetId ? { targetId } : { index };
       const res = await fetch(`${API_BASE}/windows/close`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ index }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (data.success) {

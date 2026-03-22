@@ -20,6 +20,7 @@ export interface WorkbenchInfo {
   page: Page;
   title: string;
   url: string;
+  targetId?: string;
 }
 
 // ── Agent State (from scraper) ──
@@ -117,6 +118,7 @@ export interface WindowInfo {
   title: string;
   url: string;
   active: boolean;
+  targetId?: string;
 }
 
 export interface ConversationInfo {

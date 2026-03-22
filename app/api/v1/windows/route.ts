@@ -19,6 +19,7 @@ export async function GET() {
         title: w.title,
         url: w.url,
         active: idx === ctx.activeWindowIdx,
+        targetId: w.targetId,
       })),
     });
   } catch (e: any) {

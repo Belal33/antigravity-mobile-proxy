@@ -18,7 +18,7 @@ interface HeaderProps {
   onNewChat: () => void;
   onStartCdp: (projectDir?: string, killExisting?: boolean) => Promise<any>;
   onOpenWindow: (projectDir: string) => Promise<any>;
-  onCloseWindow: (index: number) => Promise<any>;
+  onCloseWindow: (index: number, targetId?: string) => Promise<any>;
 }
 
 export default function Header({
@@ -94,12 +94,12 @@ export default function Header({
     }
   };
 
-  const handleCloseWindow = async (idx: number, e: React.MouseEvent) => {
+  const handleCloseWindow = async (idx: number, targetId: string | undefined, e: React.MouseEvent) => {
     e.stopPropagation();
     const confirmed = window.confirm(`Close window "${windows[idx]?.title || idx}"?`);
     if (!confirmed) return;
 
-    const result = await onCloseWindow(idx);
+    const result = await onCloseWindow(idx, targetId);
     setActionMessage({
       text: result.message || (result.success ? 'Closed!' : 'Failed to close'),
       type: result.success ? 'success' : 'error',
@@ -189,7 +189,7 @@ export default function Header({
                 </button>
                 <button
                   className="window-item-close"
-                  onClick={(e) => handleCloseWindow(w.index, e)}
+                  onClick={(e) => handleCloseWindow(w.index, w.targetId, e)}
                   title={`Close "${w.title}"`}
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
