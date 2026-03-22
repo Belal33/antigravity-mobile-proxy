@@ -81,6 +81,24 @@ export async function getChatHistory(ctx: ProxyContext): Promise<ChatHistory> {
           'svg.cursor-pointer, [class*="cursor-pointer"][class*="opacity-70"], button[class*="opacity-70"]'
         )
         .forEach((n) => n.remove());
+      // Remove <img> tags whose src is a VS Code webview filesystem path.
+      // These are absolute OS paths (e.g. /usr/share/antigravity/resources/...)
+      // or vscode-resource:// URIs that are valid inside VS Code's renderer but
+      // produce 404s when the browser requests them from the Next.js server.
+      clone.querySelectorAll('img').forEach((img) => {
+        const src = img.getAttribute('src') || '';
+        if (
+          src.startsWith('/usr/') ||
+          src.startsWith('/home/') ||
+          src.startsWith('/opt/') ||
+          src.startsWith('/var/') ||
+          src.startsWith('vscode-resource:') ||
+          src.startsWith('vscode-webview-resource:') ||
+          src.includes('/resources/app/extensions/')
+        ) {
+          img.remove();
+        }
+      });
       return (clone as HTMLElement).innerHTML?.trim() || '';
     }
 

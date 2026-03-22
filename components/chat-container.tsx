@@ -96,6 +96,7 @@ export default function ChatContainer() {
 
       <ChatInput
         onSend={chat.sendMessage}
+        onStop={chat.stopStreaming}
         isStreaming={chat.isStreaming}
         currentMode={chat.currentMode}
         onToggleMode={chat.toggleMode}
@@ -123,6 +124,10 @@ export default function ChatContainer() {
         open={chat.changesPanelOpen}
         onClose={chat.toggleChangesPanel}
         changes={chat.changeFiles}
+        onAcceptAll={chat.acceptAllChanges}
+        onRejectAll={chat.rejectAllChanges}
+        isAccepting={chat.isAccepting}
+        isRejecting={chat.isRejecting}
       />
     </div>
   );

@@ -44,6 +44,7 @@ export function useChat() {
   }, []);
   
   const controllerRef = useRef<AbortController | null>(null);
+  const streamPromiseRef = useRef<Promise<void> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const currentResponseRef = useRef('');
   const currentStepsRef = useRef<SSEStep[]>([]);
@@ -142,6 +143,10 @@ export function useChat() {
     changesPanelOpen,
     toggleChangesPanel,
     loadChanges,
+    acceptAllChanges,
+    rejectAllChanges,
+    isAccepting,
+    isRejecting,
   } = useChanges();
 
   // Refresh artifact and changes data when a conversation switch completes
@@ -289,7 +294,24 @@ export function useChat() {
   }, [setStatus, scrollToBottom, loadArtifacts, loadChanges]);
 
   const sendMessage = useCallback(async (text: string) => {
-    if (isStreaming || !text.trim()) return;
+    if (!text.trim()) return;
+
+    // ── Interrupt any in-flight stream ──────────────────────────────────────
+    // Abort the active controller so the current stream throws AbortError,
+    // then await the promise so its finally{} block can save the partial
+    // response before we overwrite shared state below.
+    // Also call /chat/stop to click the IDE's cancel button via CDP.
+    if (controllerRef.current) {
+      controllerRef.current.abort();
+      controllerRef.current = null;
+      // Fire IDE stop in parallel — don't await so we don't block the abort
+      fetch(`${API_BASE}/chat/stop`, { method: 'POST' }).catch(() => {/* ignore */});
+    }
+    if (streamPromiseRef.current) {
+      await streamPromiseRef.current;
+      streamPromiseRef.current = null;
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     setShowWelcome(false);
     const trimmed = text.trim();
@@ -305,7 +327,7 @@ export function useChat() {
     const controller = new AbortController();
     controllerRef.current = controller;
 
-    try {
+    const doStream = async () => { try {
       let lastEventId = '';
       let attempt = 0;
       const MAX_RETRIES = 5;
@@ -385,7 +407,7 @@ export function useChat() {
       const finalSteps = [...currentStepsRef.current];
 
       setIsStreaming(false);
-      controllerRef.current = null;
+      if (controllerRef.current === controller) controllerRef.current = null;
 
       if (finalResponse || finalSteps.length > 0) {
         setMessages(prev => [
@@ -394,8 +416,11 @@ export function useChat() {
         ]);
       }
       setStatus('connected', 'Agent');
-    }
-  }, [isStreaming, handleSSEvent, setStatus]);
+    } }; // end doStream
+
+    streamPromiseRef.current = doStream();
+    await streamPromiseRef.current;
+  }, [handleSSEvent, setStatus]);
 
   const startNewChat = useCallback(async () => {
     if (controllerRef.current) controllerRef.current.abort();
@@ -412,6 +437,17 @@ export function useChat() {
       }
     } catch { /* ignore */ }
   }, [setStatus]);
+
+  const stopStreaming = useCallback(() => {
+    // 1) Cancel the SSE stream on the proxy side
+    if (controllerRef.current) {
+      controllerRef.current.abort();
+      controllerRef.current = null;
+    }
+    // 2) Tell the real IDE window to stop the agent via CDP
+    //    Fire-and-forget — we don't need to await this for the UI to react.
+    fetch(`${API_BASE}/chat/stop`, { method: 'POST' }).catch(() => {/* ignore */});
+  }, []);
 
   const approve = useCallback(async () => {
     try {
@@ -489,12 +525,12 @@ export function useChat() {
     messages, isStreaming, isConnected, statusText, statusState,
     showWelcome, isLoadingHistory, currentSteps, currentResponse, windows,
     conversations, activeConversation, artifactFiles, artifactPanelOpen,
-    changeFiles, changesPanelOpen,
+    changeFiles, changesPanelOpen, acceptAllChanges, rejectAllChanges, isAccepting, isRejecting,
     currentMode, currentAgent, agents, isLoadingAgents,
     cdpStatus, recentProjects,
     isAgentBusy, isMonitorConnected,
     networkOnline,
-    sendMessage, startNewChat, approve, reject,
+    sendMessage, stopStreaming, startNewChat, approve, reject,
     selectWindow, selectConversation, toggleArtifactPanel, openArtifactPanel,
     toggleChangesPanel,
     toggleMode, fetchAgentList, switchAgent,

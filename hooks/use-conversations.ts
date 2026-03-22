@@ -116,8 +116,11 @@ export function useConversations(
       mutateWindows();
       // Fetch the new window's chat history
       fetchHistory();
-      // Refresh conversations list for the new window
-      mutateConversations();
+      // Refresh conversations list for the new window — use a short delay so the
+      // server has time to settle the window context before we re-fetch.
+      // A second pass fires 1.5s later to catch any slower propagation.
+      setTimeout(() => mutateConversations(), 300);
+      setTimeout(() => mutateConversations(), 1500);
       // Notify parent (for artifact sync etc.)
       onConversationSwitched?.();
     } catch { /* ignore */ }

@@ -7,6 +7,10 @@ interface ChangesPanelProps {
   open: boolean;
   onClose: () => void;
   changes: ChangeFile[];
+  onAcceptAll: () => Promise<any>;
+  onRejectAll: () => Promise<any>;
+  isAccepting: boolean;
+  isRejecting: boolean;
 }
 
 interface DiffLine {
@@ -47,11 +51,15 @@ function parseDiff(raw: string): DiffLine[] {
   return lines;
 }
 
-export default function ChangesPanel({ open, onClose, changes }: ChangesPanelProps) {
+export default function ChangesPanel({
+  open, onClose, changes,
+  onAcceptAll, onRejectAll, isAccepting, isRejecting,
+}: ChangesPanelProps) {
   const [viewingFile, setViewingFile] = useState<string | null>(null);
   const [diffContent, setDiffContent] = useState<DiffLine[]>([]);
   const [loading, setLoading] = useState(false);
   const [viewingFilename, setViewingFilename] = useState('');
+  const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const totalAdditions = changes.reduce((s, c) => s + c.additions, 0);
   const totalDeletions = changes.reduce((s, c) => s + c.deletions, 0);
@@ -90,6 +98,30 @@ export default function ChangesPanel({ open, onClose, changes }: ChangesPanelPro
     setDiffContent([]);
     setViewingFilename('');
   };
+
+  const handleAcceptAll = async () => {
+    setActionMessage(null);
+    const result = await onAcceptAll();
+    if (result?.success) {
+      setActionMessage({ type: 'success', text: 'All changes accepted ✓' });
+    } else {
+      setActionMessage({ type: 'error', text: result?.error || 'Failed to accept changes' });
+    }
+    setTimeout(() => setActionMessage(null), 3000);
+  };
+
+  const handleRejectAll = async () => {
+    setActionMessage(null);
+    const result = await onRejectAll();
+    if (result?.success) {
+      setActionMessage({ type: 'success', text: 'All changes rejected ✓' });
+    } else {
+      setActionMessage({ type: 'error', text: result?.error || 'Failed to reject changes' });
+    }
+    setTimeout(() => setActionMessage(null), 3000);
+  };
+
+  const isActionPending = isAccepting || isRejecting;
 
   return (
     <div className={`changes-panel ${open ? 'open' : ''}`}>
@@ -145,6 +177,64 @@ export default function ChangesPanel({ open, onClose, changes }: ChangesPanelPro
               {totalDeletions > 0 && <span className="changes-deletions">-{totalDeletions}</span>}
             </div>
           </div>
+
+          {/* Accept/Reject All action bar */}
+          {changes.length > 0 && (
+            <div className="changes-action-bar">
+              <button
+                className="changes-reject-all-btn"
+                onClick={handleRejectAll}
+                disabled={isActionPending}
+                title="Reject all file changes"
+              >
+                {isRejecting ? (
+                  <>
+                    <svg className="changes-action-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 12a9 9 0 11-6.219-8.56" />
+                    </svg>
+                    Rejecting…
+                  </>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                    Reject All
+                  </>
+                )}
+              </button>
+              <button
+                className="changes-accept-all-btn"
+                onClick={handleAcceptAll}
+                disabled={isActionPending}
+                title="Accept all file changes"
+              >
+                {isAccepting ? (
+                  <>
+                    <svg className="changes-action-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 12a9 9 0 11-6.219-8.56" />
+                    </svg>
+                    Accepting…
+                  </>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Accept All
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Action feedback message */}
+          {actionMessage && (
+            <div className={`changes-action-message changes-action-message--${actionMessage.type}`}>
+              {actionMessage.text}
+            </div>
+          )}
 
           <div className="changes-file-list">
             {changes.map(c => (
