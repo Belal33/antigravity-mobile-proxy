@@ -1,6 +1,6 @@
 {
   "name": "antigravity-mobile-proxy",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "description": "A web chat proxy for Antigravity IDE with ngrok OAuth tunnel support",
   "keywords": [
     "antigravity",
