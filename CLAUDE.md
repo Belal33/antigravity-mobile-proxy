@@ -1,0 +1,3 @@
+<!-- HIVEMIND_CLAUDE -->
+@AGENTS.md
+<!-- HIVEMIND_CLAUDE -->

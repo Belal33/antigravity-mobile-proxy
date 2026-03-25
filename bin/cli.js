@@ -436,7 +436,7 @@ function startServer({ email, port, authtoken, noTunnel }) {
     const nextServer = spawn(process.execPath, [serverJs], {
       cwd: standaloneDir,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, PORT: port, HOSTNAME: '0.0.0.0' },
+      env: { ...process.env, PORT: port, HOSTNAME: '127.0.0.1' },
     });
 
     let serverStarted = false;
@@ -547,7 +547,7 @@ function startServer({ email, port, authtoken, noTunnel }) {
         const nextServer = spawn(process.execPath, [serverJs], {
           cwd: standaloneDir,
           stdio: ['ignore', 'pipe', 'pipe'],
-          env: { ...process.env, PORT: port, HOSTNAME: '0.0.0.0' },
+          env: { ...process.env, PORT: port, HOSTNAME: '127.0.0.1' },
         });
 
         let serverStarted = false;
