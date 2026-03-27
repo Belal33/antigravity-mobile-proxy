@@ -392,6 +392,42 @@ function setupStandaloneAssets() {
   if (fs.existsSync(srcPublic) && !fs.existsSync(destPublic)) {
     copyDirSync(srcPublic, destPublic);
   }
+
+  // ── Fix: Copy puppeteer-core + deps to standalone ────────────────────
+  // Next.js's file tracer only copies individually traced files (~10 of 1572)
+  // for puppeteer-core, missing critical modules like ws (WebSocket with mask()),
+  // chromium-bidi, debug, etc. This causes "b.mask is not a function" at runtime.
+  // We copy the full packages so the native require() can resolve them properly.
+  const externalPkgs = [
+    'puppeteer-core',
+    'ws',
+    'chromium-bidi',
+    'debug',
+    'ms',
+    'devtools-protocol',
+    '@puppeteer/browsers',
+    'typed-query-selector',
+    'webdriver-bidi-protocol',
+  ];
+
+  const destModules = path.join(standaloneDir, 'node_modules');
+  for (const pkg of externalPkgs) {
+    const src = path.join(packageRoot, 'node_modules', pkg);
+    const dest = path.join(destModules, pkg);
+    // Only copy if the source exists and the destination doesn't have a package.json
+    // (the tracer may have created a partial directory)
+    if (fs.existsSync(src) && !fs.existsSync(path.join(dest, 'package.json'))) {
+      try {
+        // Remove the partial directory if the tracer left one
+        if (fs.existsSync(dest)) {
+          fs.rmSync(dest, { recursive: true, force: true });
+        }
+        copyDirSync(src, dest);
+      } catch (e) {
+        console.log(`  ${fmt.dim(`[setup] Warning: could not copy ${pkg}: ${e.message}`)}`);
+      }
+    }
+  }
 }
 
 function copyDirSync(src, dest) {
@@ -727,7 +763,46 @@ class TunnelManager {
     try { return require(localNgrok); } catch { return require('@ngrok/ngrok'); }
   }
 
+  /** Kill any lingering ngrok sessions from a previous run (cross-platform). */
+  _killStaleAgents() {
+    try {
+      const { execSync } = require('child_process');
+      const isWin = process.platform === 'win32';
+      let killed = 0;
+
+      if (isWin) {
+        // Windows: use tasklist + taskkill
+        const result = execSync('tasklist /FI "IMAGENAME eq ngrok.exe" /FO CSV /NH 2>NUL || echo ""', { encoding: 'utf-8' }).trim();
+        if (result && !result.startsWith('INFO:') && result.includes('ngrok')) {
+          try {
+            execSync('taskkill /F /IM ngrok.exe 2>NUL', { encoding: 'utf-8' });
+            killed++;
+          } catch {}
+        }
+      } else {
+        // Linux / macOS: use pgrep
+        const result = execSync('pgrep -f "ngrok" 2>/dev/null || true', { encoding: 'utf-8' }).trim();
+        if (result) {
+          const pids = result.split('\n').filter(pid => pid && parseInt(pid, 10) !== process.pid);
+          for (const pid of pids) {
+            try { process.kill(parseInt(pid, 10), 'SIGTERM'); killed++; } catch {}
+          }
+        }
+      }
+
+      if (killed > 0) {
+        console.log(`  ${fmt.dim(`Cleaned up ${killed} stale ngrok process(es)`)}`);
+      }
+    } catch {}
+  }
+
   async start() {
+    // Fully disconnect any sessions held by the in-process ngrok SDK
+    try { await this.ngrok.kill(); } catch {}
+    // Also kill orphan OS-level ngrok processes from prior crashed runs
+    this._killStaleAgents();
+    // Brief pause so ngrok's servers can release the old endpoint
+    await new Promise(r => setTimeout(r, 1500));
     await this._connect();
   }
 
@@ -805,6 +880,10 @@ class TunnelManager {
       this.listener = null;
     }
     this.url = null;
+    // kill() is more thorough than disconnect() — it tears down the entire
+    // agent session, not just the individual listener.  This frees the
+    // session slot on ngrok's servers and prevents ERR_NGROK_108.
+    try { this.ngrok.kill(); } catch {}
     try { this.ngrok.disconnect(); } catch {}
 
     this.attempt++;
@@ -842,6 +921,7 @@ class TunnelManager {
     this.destroyed = true;
     if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); }
     if (this.listener) { try { await this.listener.close(); } catch {} }
+    try { await this.ngrok.kill(); } catch {}
     try { await this.ngrok.disconnect(); } catch {}
   }
 }

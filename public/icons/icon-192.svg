@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0a1a"/>
+      <stop offset="100%" stop-color="#0a0a0f"/>
+    </linearGradient>
+    <linearGradient id="icon-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3"/>
+    </filter>
+  </defs>
+  <!-- Background -->
+  <rect width="192" height="192" fill="url(#bg)" rx="38"/>
+  <!-- Glow layer -->
+  <g filter="url(#glow)" opacity="0.4">
+    <circle cx="96" cy="96" r="52" fill="none" stroke="url(#icon-grad)" stroke-width="5"/>
+  </g>
+  <!-- Globe icon scaled to fit: original viewBox 0 0 24 24, centered at 96,96 -->
+  <g transform="translate(96,96) scale(5.2) translate(-12,-12)">
+    <circle cx="12" cy="12" r="10" fill="none" stroke="url(#icon-grad)" stroke-width="1.5"/>
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" fill="none" stroke="url(#icon-grad)" stroke-width="1.5"/>
+    <line x1="2" y1="12" x2="22" y2="12" stroke="url(#icon-grad)" stroke-width="1.5"/>
+  </g>
+</svg>

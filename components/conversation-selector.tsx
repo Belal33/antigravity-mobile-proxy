@@ -98,10 +98,13 @@ export default function ConversationSelector({ conversations, activeConversation
                     <span className="conv-item-time">{formatRelativeTime(current.mtime)}</span>
                   )}
                   {/* Trash icon placeholder — matches IDE style */}
-                  <button
+                  <span
+                    role="button"
+                    tabIndex={0}
                     className="conv-item-action"
                     title="Current conversation"
                     onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
                   >
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <polyline points="3 6 5 6 21 6" />
@@ -109,7 +112,7 @@ export default function ConversationSelector({ conversations, activeConversation
                       <path d="M10 11v6M14 11v6" />
                       <path d="M9 6V4h6v2" />
                     </svg>
-                  </button>
+                  </span>
                 </div>
               </button>
             </div>

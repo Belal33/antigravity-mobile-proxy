@@ -43,3 +43,10 @@ next-env.d.ts
 # Debug data dumps
 dump_panel.json
 debug_modal.json
+
+# PWA generated files
+public/sw.js
+public/sw.js.map
+public/workbox-*.js
+public/workbox-*.js.map
+public/swe-worker-*.js

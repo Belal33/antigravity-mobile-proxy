@@ -32,7 +32,7 @@
   ],
   "scripts": {
     "dev": "next dev -p 5555",
-    "build": "NODE_ENV=production next build",
+    "build": "NODE_ENV=production next build --webpack",
     "postbuild": "node scripts/patch-next.js",
     "start": "next start -p 5555",
     "tunnel": "node bin/cli.js",
@@ -41,6 +41,7 @@
     "prepublishOnly": "NODE_ENV=production npm run build"
   },
   "dependencies": {
+    "@ducanh2912/next-pwa": "^10.2.9",
     "@ngrok/ngrok": "^1.7.0",
     "next": "16.1.6",
     "puppeteer-core": "^24.39.0",
