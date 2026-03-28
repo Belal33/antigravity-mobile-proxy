@@ -81,11 +81,14 @@ Open that URL on your phone or any browser — sign in with your Google account,
 
 The proxy uses [ngrok](https://ngrok.com) to create a secure tunnel from the internet to your local machine. You need a free ngrok account:
 
-1. Go to [dashboard.ngrok.com/signup](https://dashboard.ngrok.com/signup) and sign up (it's free)
-2. Go to [dashboard.ngrok.com/authtokens](https://dashboard.ngrok.com/authtokens) and copy your auth token
-3. Paste it when the wizard asks
+1. Run the proxy — it will **automatically open** the ngrok dashboard in your browser
+2. Sign up or log in (it's free)
+3. Click the **copy** button next to your authtoken
+4. The CLI **detects it from your clipboard** automatically ✨
 
 > 💡 Your token is saved locally so you only need to do this once.
+>
+> If clipboard detection isn't available (e.g., headless server), you can paste the token manually or pass it via `--authtoken` or the `NGROK_AUTHTOKEN` environment variable.
 
 ### Google OAuth Protection
 
@@ -229,7 +232,7 @@ The proxy automatically starts Antigravity if it's not running. If it still can'
 
 ### "ngrok auth token is invalid"
 
-Your token may have expired. Get a new one from [dashboard.ngrok.com/authtokens](https://dashboard.ngrok.com/authtokens) and run:
+Your token may have expired. Get a new one from [dashboard.ngrok.com/get-started/your-authtoken](https://dashboard.ngrok.com/get-started/your-authtoken) and run:
 
 ```bash
 npx antigravity-mobile-proxy@latest --reset
