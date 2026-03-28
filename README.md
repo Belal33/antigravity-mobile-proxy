@@ -29,6 +29,32 @@ Antigravity is an AI coding agent that lives inside your IDE. Normally, you can 
 
 ---
 
+## 📦 Installation
+
+### Option 1: Run directly with npx (no install needed)
+
+```bash
+npx antigravity-mobile-proxy@latest
+```
+
+This downloads and runs the latest version every time — no global install required.
+
+### Option 2: Install globally via npm
+
+```bash
+npm install -g antigravity-mobile-proxy@latest
+```
+
+Then run it anytime with:
+
+```bash
+antigravity-mobile-proxy
+```
+
+> 💡 **Which should I use?** Use `npx` if you want to always run the latest version with zero setup. Use `npm install -g` if you prefer a persistent global command or plan to use the `--install` service feature.
+
+---
+
 ## ⚡ Quick Start
 
 ### What You Need
