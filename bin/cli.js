@@ -140,7 +140,7 @@ function clearLine() {
   process.stdout.write('\x1b[2K\r');
 }
 
-// ── Browser & Clipboard Helpers ─────────────────────────────────────────
+// ── Browser Helper ──────────────────────────────────────────────────────
 function openBrowser(url) {
   try {
     const cmd = process.platform === 'darwin' ? 'open'
@@ -151,102 +151,6 @@ function openBrowser(url) {
   } catch {
     return false;
   }
-}
-
-function readClipboard() {
-  try {
-    if (process.platform === 'darwin') {
-      return execSync('pbpaste 2>/dev/null', { encoding: 'utf-8', timeout: 2000 }).trim();
-    } else if (process.platform === 'win32') {
-      return execSync('powershell -command "Get-Clipboard" 2>NUL', { encoding: 'utf-8', timeout: 2000 }).trim();
-    } else {
-      // Linux — try xclip → xsel → wl-paste (Wayland)
-      try {
-        return execSync('xclip -selection clipboard -o 2>/dev/null', { encoding: 'utf-8', timeout: 2000 }).trim();
-      } catch {
-        try {
-          return execSync('xsel --clipboard --output 2>/dev/null', { encoding: 'utf-8', timeout: 2000 }).trim();
-        } catch {
-          return execSync('wl-paste 2>/dev/null', { encoding: 'utf-8', timeout: 2000 }).trim();
-        }
-      }
-    }
-  } catch {
-    return null;
-  }
-}
-
-function isNgrokToken(str) {
-  if (!str || str.length < 30) return false;
-  // ngrok authtokens: alphanumeric + underscores, 30+ chars, always contain '_'
-  return /^[a-zA-Z0-9_]{30,}$/.test(str) && str.includes('_');
-}
-
-/**
- * Poll the system clipboard for a newly-copied ngrok authtoken.
- * Also listens for Enter keypress so the user can bail to manual paste.
- * Resolves with the token string, or null if timed-out / user pressed Enter.
- */
-async function waitForClipboardToken(timeoutMs) {
-  const spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-  let idx = 0;
-  const start = Date.now();
-  // Snapshot current clipboard so we only react to NEW copies
-  const initialClip = readClipboard();
-
-  return new Promise((resolve) => {
-    let resolved = false;
-
-    // ── Clipboard poller ──────────────────────────────────────────
-    const interval = setInterval(() => {
-      if (resolved) return;
-
-      if (Date.now() - start > timeoutMs) {
-        finish(null);
-        return;
-      }
-
-      const clip = readClipboard();
-      if (clip && clip !== initialClip && isNgrokToken(clip)) {
-        finish(clip);
-        return;
-      }
-
-      const elapsed = Math.floor((Date.now() - start) / 1000);
-      clearLine();
-      process.stdout.write(
-        `  ${spinner[idx++ % spinner.length]} Watching clipboard for authtoken... ${c.dim}(${elapsed}s — press Enter to paste manually)${c.reset}`
-      );
-    }, 1500);
-
-    // ── Keypress listener (Enter → manual fallback) ──────────────
-    const stdin = process.stdin;
-    const wasRaw = stdin.isRaw;
-    if (stdin.isTTY) stdin.setRawMode(true);
-    stdin.resume();
-
-    const onKey = (key) => {
-      if (resolved) return;
-      const s = key.toString();
-      if (s === '\r' || s === '\n') {
-        finish(null);
-      } else if (s === '\u0003') {
-        finish(null);
-        process.exit(0);
-      }
-    };
-    stdin.on('data', onKey);
-
-    function finish(token) {
-      if (resolved) return;
-      resolved = true;
-      clearInterval(interval);
-      stdin.removeListener('data', onKey);
-      if (stdin.isTTY) stdin.setRawMode(wasRaw || false);
-      clearLine();
-      resolve(token);
-    }
-  });
 }
 
 // ── Banner ──────────────────────────────────────────────────────────────
@@ -390,45 +294,24 @@ async function runWizard(cliArgs) {
     const browserOpened = openBrowser(dashboardUrl);
 
     if (browserOpened) {
-      // ── Automated flow: browser + clipboard detection ──────────
       console.log(`  ${fmt.success('Opened ngrok dashboard in your browser')}`);
       console.log('');
       console.log(`  ${fmt.bold('What to do:')}`);
       console.log(`    ${fmt.cyan('1.')} Log in or sign up ${fmt.dim('(it\'s free)')}`);
-      console.log(`    ${fmt.cyan('2.')} Click the ${fmt.bold('copy')} button next to your authtoken`);
-      console.log(`    ${fmt.cyan('3.')} We'll detect it automatically from your clipboard`);
+      console.log(`    ${fmt.cyan('2.')} Copy your authtoken from the dashboard`);
+      console.log(`    ${fmt.cyan('3.')} Paste it below`);
       console.log('');
-
-      const clipToken = await waitForClipboardToken(180_000); // 3 min timeout
-
-      if (clipToken) {
-        const masked = clipToken.slice(0, 8) + '••••••••' + clipToken.slice(-4);
-        console.log(`  ${fmt.success('Authtoken detected from clipboard!')}`);
-        console.log(`  ${fmt.dim('  Token:')} ${masked}`);
-        console.log('');
-
-        const useIt = await askYesNo(`  ${fmt.cyan('?')} Use this token?`);
-        if (useIt) {
-          authtoken = clipToken;
-        }
-      }
-
-      // Clipboard detection missed or user declined — fall back to manual
-      if (!authtoken) {
-        console.log('');
-        authtoken = await askPassword(`  ${fmt.cyan('?')} Paste your authtoken here: `);
-      }
     } else {
-      // ── Headless / no browser — original manual flow ───────────
+      // ── Headless / no browser — show URL manually ──────────────
       console.log(`  ${fmt.bold('How to get your authtoken:')}`);
       console.log(`    ${fmt.cyan('1.')} Go to ${fmt.link('https://dashboard.ngrok.com/signup')}`);
       console.log(`    ${fmt.cyan('2.')} Sign up (it's free) or log in`);
       console.log(`    ${fmt.cyan('3.')} Go to ${fmt.link(dashboardUrl)}`);
       console.log(`    ${fmt.cyan('4.')} Copy your authtoken`);
       console.log('');
-
-      authtoken = await askPassword(`  ${fmt.cyan('?')} Paste your authtoken: `);
     }
+
+    authtoken = await askPassword(`  ${fmt.cyan('?')} Paste your authtoken: `);
 
     if (!authtoken) {
       console.log('');
@@ -970,17 +853,38 @@ class TunnelManager {
     }
 
     try {
-      // Use a unique cookie prefix per session so stale cookies from a
-      // previous tunnel session are simply ignored by ngrok instead of
-      // causing ERR_NGROK_3303/3301/3310 ("invalid/expired state").
-      const sessionCookiePrefix = `ag_${Date.now()}_`;
+
+      // Traffic Policy with a unique auth_id per session so stale cookies
+      // from previous tunnel sessions are ignored (fixes ERR_NGROK_3303).
+      // Email restriction is enforced via an expression + deny rule.
+      const trafficPolicy = JSON.stringify({
+        on_http_request: [
+          {
+            actions: [
+              {
+                type: "oauth",
+                config: {
+                  provider: "google",
+                  auth_id: `ag${Date.now()}`
+                }
+              }
+            ]
+          },
+          {
+            expressions: [
+              `actions.ngrok.oauth.identity.email != '${this.email}'`
+            ],
+            actions: [
+              { type: "deny" }
+            ]
+          }
+        ]
+      });
 
       this.listener = await this.ngrok.forward({
         addr:               parseInt(this.port, 10),
         authtoken:          this.authtoken,
-        oauth_provider:     'google',
-        oauth_allow_emails: this.email,
-        oauth_cookie_prefix: sessionCookiePrefix,
+        traffic_policy:     trafficPolicy,
 
         // Keep the same URL across reconnections (prevents ERR_NGROK_3200)
         pooling_enabled:    true,

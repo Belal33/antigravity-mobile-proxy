@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import PWAInstallPrompt from '@/components/pwa-install-prompt';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +36,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <PWAInstallPrompt />
+      </body>
     </html>
   );
 }
+
