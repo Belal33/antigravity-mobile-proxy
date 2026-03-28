@@ -6,9 +6,16 @@
 
 Control your [Antigravity IDE](https://github.com/anthropics/antigravity) remotely — ask questions, run commands, edit files, and approve actions — all from a beautiful mobile-friendly chat interface with a secure tunnel to your machine.
 
-[![npm](https://img.shields.io/npm/v/antigravity-mobile-proxy?color=CB3837&logo=npm)](https://www.npmjs.com/package/antigravity-mobile-proxy)
+[![npm version](https://img.shields.io/npm/v/antigravity-mobile-proxy?color=CB3837&logo=npm)](https://www.npmjs.com/package/antigravity-mobile-proxy)
+[![npm downloads](https://img.shields.io/npm/dm/antigravity-mobile-proxy?color=blue&logo=npm)](https://www.npmjs.com/package/antigravity-mobile-proxy)
+[![CI](https://github.com/Belal33/antigravity-mobile-proxy/actions/workflows/ci.yml/badge.svg)](https://github.com/Belal33/antigravity-mobile-proxy/actions/workflows/ci.yml)
 [![Node.js](https://img.shields.io/badge/Node.js-≥18-339933?logo=node.js)](https://nodejs.org)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/Belal33/antigravity-mobile-proxy?style=social)](https://github.com/Belal33/antigravity-mobile-proxy)
+
+<a href="https://drive.google.com/file/d/1eCSPEBaAW6VV_4PyTOcGTJci71_qljXh/view">
+  <img src="https://drive.google.com/uc?export=view&id=1eCSPEBaAW6VV_4PyTOcGTJci71_qljXh" alt="Antigravity Mobile Proxy Demo" width="600" />
+</a>
 
 </div>
 

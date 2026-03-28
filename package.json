@@ -1,14 +1,41 @@
 {
   "name": "antigravity-mobile-proxy",
   "version": "1.0.0",
-  "description": "A web chat proxy for Antigravity IDE with ngrok OAuth tunnel support",
+  "description": "Chat with your Antigravity AI coding agent from any device — mobile proxy with secure ngrok tunnel, real-time streaming, and remote approve/reject",
   "keywords": [
     "antigravity",
     "ide",
+    "ai-agent",
+    "ai-coding",
+    "mobile",
+    "remote",
     "chat",
     "proxy",
-    "ngrok"
+    "ngrok",
+    "cdp",
+    "chrome-devtools-protocol",
+    "developer-tools",
+    "devtools",
+    "tunnel",
+    "pwa",
+    "sse",
+    "streaming",
+    "vscode",
+    "electron",
+    "cli"
   ],
+  "engines": {
+    "node": ">=18"
+  },
+  "homepage": "https://github.com/Belal33/antigravity-mobile-proxy#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Belal33/antigravity-mobile-proxy.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Belal33/antigravity-mobile-proxy/issues"
+  },
+  "author": "Belal",
   "license": "MIT",
   "bin": {
     "antigravity-mobile-proxy": "bin/cli.js"
