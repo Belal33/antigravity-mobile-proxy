@@ -125,6 +125,33 @@ This starts the chat UI at `http://localhost:5555` without creating a public URL
 npx antigravity-mobile-proxy@latest --port 8080
 ```
 
+### Run Always-On (Recommended)
+
+Want the proxy to be **always available** whenever your computer is on? Install it as a background service:
+
+```bash
+# First run the wizard once to save your settings
+npx antigravity-mobile-proxy@latest
+
+# Then install the auto-start service
+npx antigravity-mobile-proxy@latest --install
+```
+
+This works automatically on:
+- 🐧 **Linux** — creates a `systemd` user service
+- 🍎 **macOS** — creates a `launchd` agent  
+- 🪟 **Windows** — creates a Task Scheduler task
+
+The service **auto-starts on login** and **auto-restarts on crashes**. Your ngrok URL stays active as long as your computer is on.
+
+```bash
+# Check if the service is running
+npx antigravity-mobile-proxy@latest --status
+
+# Remove the auto-start service
+npx antigravity-mobile-proxy@latest --uninstall
+```
+
 ### Reset Your Saved Settings
 
 ```bash
@@ -139,6 +166,9 @@ npx antigravity-mobile-proxy@latest --reset
 | `--port <number>` | Server port (default: `5555`) |
 | `--authtoken <token>` | ngrok auth token (skips the wizard question) |
 | `--no-tunnel` | Run locally without creating a public URL |
+| `--install` | Install as auto-start background service (survives reboot) |
+| `--uninstall` | Remove the auto-start service |
+| `--status` | Check if the auto-start service is running |
 | `--reset` | Clear saved settings and start fresh |
 | `--help` | Show all available options |
 

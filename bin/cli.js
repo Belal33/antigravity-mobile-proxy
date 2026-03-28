@@ -163,6 +163,9 @@ function parseArgs() {
     else if (args[i] === '--help') parsed.help = true;
     else if (args[i] === '--reset') parsed.reset = true;
     else if (args[i] === '--non-interactive') parsed.nonInteractive = true;
+    else if (args[i] === '--install') parsed.install = true;
+    else if (args[i] === '--uninstall') parsed.uninstall = true;
+    else if (args[i] === '--status') parsed.status = true;
   }
 
   return parsed;
@@ -180,12 +183,18 @@ function printHelp() {
   console.log(`    ${fmt.cyan('--authtoken')} <token>   ngrok authtoken`);
   console.log(`    ${fmt.cyan('--no-tunnel')}           Run locally without ngrok`);
   console.log(`    ${fmt.cyan('--reset')}               Reset saved configuration`);
+  console.log(`    ${fmt.cyan('--install')}             Install as auto-start service (survives reboot)`);
+  console.log(`    ${fmt.cyan('--uninstall')}           Remove the auto-start service`);
+  console.log(`    ${fmt.cyan('--status')}              Check if the auto-start service is running`);
   console.log(`    ${fmt.cyan('--help')}                Show this help`);
   console.log('');
   console.log(`  ${fmt.bold('Environment Variables:')}`);
   console.log(`    ${fmt.cyan('NGROK_AUTHTOKEN')}       Your ngrok authtoken`);
   console.log('');
-  console.log(`  ${fmt.bold('First-time setup?')} Just run ${fmt.cyan('npx antigravity-mobile-proxy')} and follow the wizard!`);
+  console.log(`  ${fmt.bold('Always-on setup:')}`);
+  console.log(`    ${fmt.dim('1.')} Run the wizard first: ${fmt.cyan('npx antigravity-mobile-proxy')}`);
+  console.log(`    ${fmt.dim('2.')} Install service:      ${fmt.cyan('npx antigravity-mobile-proxy --install')}`);
+  console.log(`    ${fmt.dim('   The proxy will now auto-start on login and restart on crashes.')}`);
   console.log('');
 }
 
@@ -950,12 +959,425 @@ function printLocalOnly(port) {
   console.log('');
 }
 
+// ── Auto-Start Service Manager ──────────────────────────────────────────
+// Cross-platform: systemd (Linux), launchd (macOS), Task Scheduler (Windows)
+
+const SERVICE_NAME = 'antigravity-proxy';
+
+function getServicePaths() {
+  const platform = process.platform;
+  const home = os.homedir();
+
+  if (platform === 'linux') {
+    return {
+      type: 'systemd',
+      dir: path.join(home, '.config', 'systemd', 'user'),
+      file: path.join(home, '.config', 'systemd', 'user', `${SERVICE_NAME}.service`),
+    };
+  } else if (platform === 'darwin') {
+    return {
+      type: 'launchd',
+      dir: path.join(home, 'Library', 'LaunchAgents'),
+      file: path.join(home, 'Library', 'LaunchAgents', `com.antigravity.proxy.plist`),
+    };
+  } else if (platform === 'win32') {
+    return {
+      type: 'taskscheduler',
+      dir: null, // Task Scheduler doesn't use a file directory
+      file: null,
+      taskName: 'AntigravityProxy',
+    };
+  }
+  return { type: 'unknown' };
+}
+
+function buildServiceConfig({ email, port, authtoken }) {
+  const nodePath = process.execPath;
+  const cliPath = path.resolve(__filename);
+  const projectRoot = getPackageRoot();
+  const svc = getServicePaths();
+
+  if (svc.type === 'systemd') {
+    // ── Linux: systemd user service ─────────────────────────────────
+    return `[Unit]
+Description=Antigravity Mobile Proxy (ngrok tunnel + Next.js server)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=${nodePath} ${cliPath} --non-interactive --email ${email} --port ${port} --authtoken ${authtoken}
+WorkingDirectory=${projectRoot}
+Environment="PATH=${path.dirname(nodePath)}:/usr/local/bin:/usr/bin:/bin"
+Environment="NODE_ENV=production"
+Environment="HOME=${os.homedir()}"
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=15
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=${SERVICE_NAME}
+
+[Install]
+WantedBy=default.target
+`;
+  }
+
+  if (svc.type === 'launchd') {
+    // ── macOS: launchd plist ─────────────────────────────────────────
+    const logDir = path.join(os.homedir(), '.antigravity-mobile-proxy', 'logs');
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.antigravity.proxy</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${nodePath}</string>
+    <string>${cliPath}</string>
+    <string>--non-interactive</string>
+    <string>--email</string>
+    <string>${email}</string>
+    <string>--port</string>
+    <string>${port}</string>
+    <string>--authtoken</string>
+    <string>${authtoken}</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>${projectRoot}</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>${logDir}/stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>${logDir}/stderr.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key>
+    <string>production</string>
+    <key>PATH</key>
+    <string>${path.dirname(nodePath)}:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>
+`;
+  }
+
+  if (svc.type === 'taskscheduler') {
+    // ── Windows: schtasks command args ───────────────────────────────
+    return {
+      command: `schtasks /Create /F /SC ONLOGON /TN "${svc.taskName}" /TR "\"${nodePath}\" \"${cliPath}\" --non-interactive --email ${email} --port ${port} --authtoken ${authtoken}" /RL HIGHEST`,
+      uninstall: `schtasks /Delete /F /TN "${svc.taskName}"`,
+      status: `schtasks /Query /TN "${svc.taskName}"`,
+    };
+  }
+
+  return null;
+}
+
+async function installService() {
+  printBanner();
+  console.log(`  ${fmt.bold('🔧 Installing Auto-Start Service')}`);
+  console.log('');
+
+  // ── Gather config (from saved config + authtoken detection) ────────
+  const config = loadConfig();
+  const auth = detectAuthtoken();
+
+  const email = config.email;
+  const port = config.port || '5555';
+  const authtoken = auth ? auth.token : null;
+
+  if (!email) {
+    console.log(`  ${fmt.error('No email configured yet.')}`);
+    console.log(`  ${fmt.dim('Run the wizard first:')} ${fmt.cyan('npx antigravity-mobile-proxy')}`);
+    console.log(`  ${fmt.dim('Then run:')} ${fmt.cyan('npx antigravity-mobile-proxy --install')}`);
+    process.exit(1);
+  }
+
+  if (!authtoken) {
+    console.log(`  ${fmt.error('No ngrok authtoken found.')}`);
+    console.log(`  ${fmt.dim('Run the wizard first:')} ${fmt.cyan('npx antigravity-mobile-proxy')}`);
+    process.exit(1);
+  }
+
+  const svc = getServicePaths();
+
+  console.log(`  ${fmt.dim('Platform:')}   ${fmt.cyan(process.platform + ' (' + svc.type + ')')}`);
+  console.log(`  ${fmt.dim('Email:')}      ${fmt.cyan(email)}`);
+  console.log(`  ${fmt.dim('Port:')}       ${fmt.cyan(port)}`);
+  console.log(`  ${fmt.dim('Node:')}       ${fmt.cyan(process.execPath)}`);
+  console.log('');
+
+  if (svc.type === 'systemd') {
+    // ── Linux: systemd ──────────────────────────────────────────────
+    const content = buildServiceConfig({ email, port, authtoken });
+
+    if (!fs.existsSync(svc.dir)) {
+      fs.mkdirSync(svc.dir, { recursive: true });
+    }
+    fs.writeFileSync(svc.file, content);
+    console.log(`  ${fmt.success('Service file written to:')}`);
+    console.log(`  ${fmt.dim(svc.file)}`);
+    console.log('');
+
+    // Enable and start
+    try {
+      execSync('systemctl --user daemon-reload', { stdio: 'pipe' });
+      console.log(`  ${fmt.success('Reloaded systemd daemon')}`);
+    } catch (e) {
+      console.log(`  ${fmt.warn('Could not reload systemd: ' + e.message)}`);
+    }
+
+    try {
+      execSync(`systemctl --user enable ${SERVICE_NAME}.service`, { stdio: 'pipe' });
+      console.log(`  ${fmt.success('Enabled service (will start on login)')}`);
+    } catch (e) {
+      console.log(`  ${fmt.warn('Could not enable service: ' + e.message)}`);
+    }
+
+    try {
+      execSync(`systemctl --user restart ${SERVICE_NAME}.service`, { stdio: 'pipe' });
+      console.log(`  ${fmt.success('Started service')}`);
+    } catch (e) {
+      console.log(`  ${fmt.warn('Could not start service: ' + e.message)}`);
+    }
+
+    // Enable lingering so the service runs even when not logged in via GUI
+    try {
+      execSync(`loginctl enable-linger ${os.userInfo().username}`, { stdio: 'pipe' });
+      console.log(`  ${fmt.success('Enabled linger (service runs even without active session)')}`);
+    } catch {
+      console.log(`  ${fmt.dim('Note: "loginctl enable-linger" may need sudo for persistence without login')}`);
+    }
+
+    console.log('');
+    printSeparator();
+    console.log('');
+    console.log(`  ${fmt.bold('✅ Auto-start installed!')}`);
+    console.log('');
+    console.log(`  ${fmt.dim('View logs:')}     ${fmt.cyan(`journalctl --user -u ${SERVICE_NAME} -f`)}`);
+    console.log(`  ${fmt.dim('Check status:')} ${fmt.cyan(`systemctl --user status ${SERVICE_NAME}`)}`);
+    console.log(`  ${fmt.dim('Stop:')}          ${fmt.cyan(`systemctl --user stop ${SERVICE_NAME}`)}`);
+    console.log(`  ${fmt.dim('Restart:')}       ${fmt.cyan(`systemctl --user restart ${SERVICE_NAME}`)}`);
+    console.log(`  ${fmt.dim('Uninstall:')}     ${fmt.cyan('npx antigravity-mobile-proxy --uninstall')}`);
+    console.log('');
+
+  } else if (svc.type === 'launchd') {
+    // ── macOS: launchd ──────────────────────────────────────────────
+    const content = buildServiceConfig({ email, port, authtoken });
+    const logDir = path.join(os.homedir(), '.antigravity-mobile-proxy', 'logs');
+
+    if (!fs.existsSync(svc.dir)) {
+      fs.mkdirSync(svc.dir, { recursive: true });
+    }
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+
+    // Unload the existing agent first (if any)
+    try { execSync(`launchctl unload ${svc.file}`, { stdio: 'pipe' }); } catch {}
+
+    fs.writeFileSync(svc.file, content);
+    console.log(`  ${fmt.success('Plist written to:')}`);
+    console.log(`  ${fmt.dim(svc.file)}`);
+    console.log('');
+
+    try {
+      execSync(`launchctl load ${svc.file}`, { stdio: 'pipe' });
+      console.log(`  ${fmt.success('Service loaded and started')}`);
+    } catch (e) {
+      console.log(`  ${fmt.warn('Could not load service: ' + e.message)}`);
+    }
+
+    console.log('');
+    printSeparator();
+    console.log('');
+    console.log(`  ${fmt.bold('✅ Auto-start installed!')}`);
+    console.log('');
+    console.log(`  ${fmt.dim('View logs:')}     ${fmt.cyan(`tail -f ${logDir}/stdout.log`)}`);
+    console.log(`  ${fmt.dim('Check status:')} ${fmt.cyan('launchctl list | grep antigravity')}`);
+    console.log(`  ${fmt.dim('Stop:')}          ${fmt.cyan(`launchctl unload ${svc.file}`)}`);
+    console.log(`  ${fmt.dim('Start:')}         ${fmt.cyan(`launchctl load ${svc.file}`)}`);
+    console.log(`  ${fmt.dim('Uninstall:')}     ${fmt.cyan('npx antigravity-mobile-proxy --uninstall')}`);
+    console.log('');
+
+  } else if (svc.type === 'taskscheduler') {
+    // ── Windows: Task Scheduler ─────────────────────────────────────
+    const cmds = buildServiceConfig({ email, port, authtoken });
+
+    try {
+      execSync(cmds.command, { stdio: 'pipe' });
+      console.log(`  ${fmt.success('Task created in Windows Task Scheduler')}`);
+    } catch (e) {
+      console.log(`  ${fmt.error('Failed to create task: ' + e.message)}`);
+      console.log(`  ${fmt.dim('You may need to run this terminal as Administrator')}`);
+      process.exit(1);
+    }
+
+    // Start it immediately
+    try {
+      execSync(`schtasks /Run /TN "${svc.taskName}"`, { stdio: 'pipe' });
+      console.log(`  ${fmt.success('Service started')}`);
+    } catch {}
+
+    console.log('');
+    printSeparator();
+    console.log('');
+    console.log(`  ${fmt.bold('✅ Auto-start installed!')}`);
+    console.log('');
+    console.log(`  ${fmt.dim('Check status:')} ${fmt.cyan(`schtasks /Query /TN "${svc.taskName}"`)}`);
+    console.log(`  ${fmt.dim('Uninstall:')}     ${fmt.cyan('npx antigravity-mobile-proxy --uninstall')}`);
+    console.log('');
+
+  } else {
+    console.log(`  ${fmt.error(`Unsupported platform: ${process.platform}`)}`);
+    console.log(`  ${fmt.dim('Supported: Linux (systemd), macOS (launchd), Windows (Task Scheduler)')}`);
+    process.exit(1);
+  }
+}
+
+async function uninstallService() {
+  printBanner();
+  console.log(`  ${fmt.bold('🗑  Removing Auto-Start Service')}`);
+  console.log('');
+
+  const svc = getServicePaths();
+
+  if (svc.type === 'systemd') {
+    try { execSync(`systemctl --user stop ${SERVICE_NAME}.service`, { stdio: 'pipe' }); } catch {}
+    try { execSync(`systemctl --user disable ${SERVICE_NAME}.service`, { stdio: 'pipe' }); } catch {}
+    if (fs.existsSync(svc.file)) {
+      fs.unlinkSync(svc.file);
+    }
+    try { execSync('systemctl --user daemon-reload', { stdio: 'pipe' }); } catch {}
+    console.log(`  ${fmt.success('systemd service removed')}`);
+
+  } else if (svc.type === 'launchd') {
+    try { execSync(`launchctl unload ${svc.file}`, { stdio: 'pipe' }); } catch {}
+    if (fs.existsSync(svc.file)) {
+      fs.unlinkSync(svc.file);
+    }
+    console.log(`  ${fmt.success('launchd agent removed')}`);
+
+  } else if (svc.type === 'taskscheduler') {
+    try {
+      execSync(`schtasks /Delete /F /TN "${svc.taskName}"`, { stdio: 'pipe' });
+      console.log(`  ${fmt.success('Scheduled task removed')}`);
+    } catch (e) {
+      console.log(`  ${fmt.warn('Could not remove task (may not exist): ' + e.message)}`);
+    }
+
+  } else {
+    console.log(`  ${fmt.error(`Unsupported platform: ${process.platform}`)}`);
+    process.exit(1);
+  }
+
+  console.log('');
+  console.log(`  ${fmt.dim('The proxy will no longer auto-start.')}`);
+  console.log(`  ${fmt.dim('You can still run it manually:')} ${fmt.cyan('npx antigravity-mobile-proxy')}`);
+  console.log('');
+}
+
+async function showServiceStatus() {
+  printBanner();
+  console.log(`  ${fmt.bold('📊 Service Status')}`);
+  console.log('');
+
+  const svc = getServicePaths();
+
+  if (svc.type === 'systemd') {
+    if (!fs.existsSync(svc.file)) {
+      console.log(`  ${fmt.warn('Service not installed.')}`);
+      console.log(`  ${fmt.dim('Install with:')} ${fmt.cyan('npx antigravity-mobile-proxy --install')}`);
+      console.log('');
+      process.exit(0);
+    }
+    try {
+      const status = execSync(`systemctl --user status ${SERVICE_NAME}.service 2>&1 || true`, { encoding: 'utf-8' });
+      // Color the status output
+      const lines = status.split('\n');
+      for (const line of lines) {
+        if (line.includes('Active: active')) {
+          console.log(`  ${fmt.green('●')} ${line.trim()}`);
+        } else if (line.includes('Active: inactive') || line.includes('Active: failed')) {
+          console.log(`  ${fmt.red('●')} ${line.trim()}`);
+        } else if (line.trim()) {
+          console.log(`  ${fmt.dim(line.trim())}`);
+        }
+      }
+    } catch (e) {
+      console.log(`  ${fmt.error('Could not get status: ' + e.message)}`);
+    }
+
+  } else if (svc.type === 'launchd') {
+    if (!fs.existsSync(svc.file)) {
+      console.log(`  ${fmt.warn('Service not installed.')}`);
+      console.log(`  ${fmt.dim('Install with:')} ${fmt.cyan('npx antigravity-mobile-proxy --install')}`);
+      console.log('');
+      process.exit(0);
+    }
+    try {
+      const result = execSync('launchctl list | grep antigravity || echo "Not running"', { encoding: 'utf-8' });
+      if (result.includes('Not running')) {
+        console.log(`  ${fmt.red('●')} Service is installed but not running`);
+      } else {
+        console.log(`  ${fmt.green('●')} Service is running`);
+        console.log(`  ${fmt.dim(result.trim())}`);
+      }
+    } catch (e) {
+      console.log(`  ${fmt.error('Could not get status: ' + e.message)}`);
+    }
+
+  } else if (svc.type === 'taskscheduler') {
+    try {
+      const result = execSync(`schtasks /Query /TN "${svc.taskName}" 2>&1`, { encoding: 'utf-8' });
+      if (result.includes('Running')) {
+        console.log(`  ${fmt.green('●')} Task is running`);
+      } else {
+        console.log(`  ${fmt.yellow('●')} Task is registered but not currently running`);
+      }
+      console.log(`  ${fmt.dim(result.trim())}`);
+    } catch {
+      console.log(`  ${fmt.warn('Service not installed.')}`);
+      console.log(`  ${fmt.dim('Install with:')} ${fmt.cyan('npx antigravity-mobile-proxy --install')}`);
+    }
+  } else {
+    console.log(`  ${fmt.error(`Unsupported platform: ${process.platform}`)}`);
+  }
+
+  console.log('');
+}
+
 // ── Main ────────────────────────────────────────────────────────────────
 async function main() {
   const args = parseArgs();
 
   if (args.help) {
     printHelp();
+    process.exit(0);
+  }
+
+  if (args.install) {
+    await installService();
+    process.exit(0);
+  }
+
+  if (args.uninstall) {
+    await uninstallService();
+    process.exit(0);
+  }
+
+  if (args.status) {
+    await showServiceStatus();
     process.exit(0);
   }
 
