@@ -13,7 +13,7 @@ Control your [Antigravity IDE](https://github.com/anthropics/antigravity) remote
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/Belal33/antigravity-mobile-proxy?style=social)](https://github.com/Belal33/antigravity-mobile-proxy)
 
-<img src="https://raw.githubusercontent.com/Belal33/antigravity-mobile-proxy/main/public/demo.gif" alt="Antigravity Mobile Proxy Demo" width="600" />
+<img src="https://raw.githubusercontent.com/Belal33/antigravity-mobile-proxy/main/public/demo.gif" alt="Antigravity Mobile Proxy Demo" width="300" />
 
 </div>
 
