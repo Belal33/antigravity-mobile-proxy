@@ -116,11 +116,17 @@ export class TunnelManager extends EventEmitter {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ngrok = this.ngrokMod as any;
 
+      // Use a unique cookie prefix per session so stale cookies from a
+      // previous tunnel session are simply ignored by ngrok instead of
+      // causing ERR_NGROK_3303/3301/3310 ("invalid/expired state").
+      const sessionId = `ag_${Date.now()}_`;
+
       this.listener = await ngrok.forward({
         addr: this.config.port,
         authtoken: this.config.authtoken,
         oauth_provider: 'google',
         oauth_allow_emails: this.config.email,
+        oauth_cookie_prefix: sessionId,
 
         // ── Key: built-in disconnect callback ─────────────────────────────
         on_status_change: (addr: string, error: string) => {

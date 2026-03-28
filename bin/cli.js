@@ -825,11 +825,17 @@ class TunnelManager {
     }
 
     try {
+      // Use a unique cookie prefix per session so stale cookies from a
+      // previous tunnel session are simply ignored by ngrok instead of
+      // causing ERR_NGROK_3303/3301/3310 ("invalid/expired state").
+      const sessionCookiePrefix = `ag_${Date.now()}_`;
+
       this.listener = await this.ngrok.forward({
         addr:               parseInt(this.port, 10),
         authtoken:          this.authtoken,
         oauth_provider:     'google',
         oauth_allow_emails: this.email,
+        oauth_cookie_prefix: sessionCookiePrefix,
 
         // Keep the same URL across reconnections (prevents ERR_NGROK_3200)
         pooling_enabled:    true,
