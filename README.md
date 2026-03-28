@@ -311,7 +311,7 @@ npx antigravity-mobile-proxy@latest --port 8080
 
 ```bash
 git clone <repo-url>
-cd antigravity-chat-proxy
+cd antigravity-mobile-proxy
 npm install
 npm run dev
 ```
@@ -392,7 +392,7 @@ When using `/api/v1/chat/stream`:
 ### Project Structure
 
 ```
-antigravity-chat-proxy/
+antigravity-mobile-proxy/
 ├── app/                          # Next.js App Router
 │   ├── layout.tsx                # Root layout
 │   ├── page.tsx                  # Main chat page
