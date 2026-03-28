@@ -857,9 +857,26 @@ class TunnelManager {
       // Traffic Policy with a unique auth_id per session so stale cookies
       // from previous tunnel sessions are ignored (fixes ERR_NGROK_3303).
       // Email restriction is enforced via an expression + deny rule.
+      //
+      // IMPORTANT: PWA-critical files (manifest, service worker, icons) are
+      // excluded from BOTH OAuth and the deny rule. Mobile browsers fetch
+      // these via non-authenticated background contexts — OAuth redirects
+      // break them, preventing PWA installation on mobile.
+      const pwaPaths = [
+        "req.url.path.startsWith('/manifest')",
+        "req.url.path.startsWith('/sw.')",
+        "req.url.path.startsWith('/workbox-')",
+        "req.url.path.startsWith('/fallback-')",
+        "req.url.path.startsWith('/icons/')",
+        "req.url.path.startsWith('/favicon')"
+      ];
+      const notPwaExpr = pwaPaths.map(p => `!${p}`);
+
       const trafficPolicy = JSON.stringify({
         on_http_request: [
           {
+            // Rule 1: Apply OAuth to all non-PWA paths
+            expressions: notPwaExpr,
             actions: [
               {
                 type: "oauth",
@@ -871,7 +888,10 @@ class TunnelManager {
             ]
           },
           {
+            // Rule 2: Deny non-allowed emails (only for OAuth-protected paths)
+            // The same PWA exclusion prevents denying unauthenticated PWA requests
             expressions: [
+              ...notPwaExpr,
               `actions.ngrok.oauth.identity.email != '${this.email}'`
             ],
             actions: [
