@@ -1155,8 +1155,20 @@ WantedBy=default.target
 
   if (svc.type === 'taskscheduler') {
     // ── Windows: schtasks command args ───────────────────────────────
+    // We use a VBScript wrapper to launch Node invisibly (no console window).
+    // The VBS file is written during --install and the scheduled task
+    // invokes wscript.exe pointing at that .vbs file.
+    const vbsDir = path.join(os.homedir(), '.antigravity-mobile-proxy');
+    const vbsPath = path.join(vbsDir, 'launcher.vbs');
+
+    // VBScript content: Run(..., 0, False) → 0 = hidden window, False = don't wait
+    const vbsContent = `CreateObject("WScript.Shell").Run """${nodePath}"" ""${cliPath}"" --non-interactive --email ${email} --port ${port} --authtoken ${authtoken}", 0, False`;
+
     return {
-      command: `schtasks /Create /F /SC ONLOGON /TN "${svc.taskName}" /TR "\"${nodePath}\" \"${cliPath}\" --non-interactive --email ${email} --port ${port} --authtoken ${authtoken}" /RL HIGHEST`,
+      vbsDir,
+      vbsPath,
+      vbsContent,
+      command: `schtasks /Create /F /SC ONLOGON /TN "${svc.taskName}" /TR "wscript.exe '${vbsPath}'" /RL HIGHEST`,
       uninstall: `schtasks /Delete /F /TN "${svc.taskName}"`,
       status: `schtasks /Query /TN "${svc.taskName}"`,
     };
@@ -1296,6 +1308,15 @@ async function installService() {
     // ── Windows: Task Scheduler ─────────────────────────────────────
     const cmds = buildServiceConfig({ email, port, authtoken });
 
+    // Write the VBS launcher script (runs Node invisibly, no console window)
+    if (!fs.existsSync(cmds.vbsDir)) {
+      fs.mkdirSync(cmds.vbsDir, { recursive: true });
+    }
+    fs.writeFileSync(cmds.vbsPath, cmds.vbsContent);
+    console.log(`  ${fmt.success('Launcher script written to:')}`);
+    console.log(`  ${fmt.dim(cmds.vbsPath)}`);
+    console.log('');
+
     try {
       execSync(cmds.command, { stdio: 'pipe' });
       console.log(`  ${fmt.success('Task created in Windows Task Scheduler')}`);
@@ -1305,16 +1326,17 @@ async function installService() {
       process.exit(1);
     }
 
-    // Start it immediately
+    // Start it immediately (runs hidden via VBS)
     try {
       execSync(`schtasks /Run /TN "${svc.taskName}"`, { stdio: 'pipe' });
-      console.log(`  ${fmt.success('Service started')}`);
+      console.log(`  ${fmt.success('Service started (running in background)')}`);
     } catch {}
 
     console.log('');
     printSeparator();
     console.log('');
     console.log(`  ${fmt.bold('✅ Auto-start installed!')}`);
+    console.log(`  ${fmt.dim('The proxy runs silently in the background — no console window.')}`);
     console.log('');
     console.log(`  ${fmt.dim('Check status:')} ${fmt.cyan(`schtasks /Query /TN "${svc.taskName}"`)}`);
     console.log(`  ${fmt.dim('Uninstall:')}     ${fmt.cyan('npx antigravity-mobile-proxy --uninstall')}`);
@@ -1357,6 +1379,15 @@ async function uninstallService() {
     } catch (e) {
       console.log(`  ${fmt.warn('Could not remove task (may not exist): ' + e.message)}`);
     }
+
+    // Clean up the VBS launcher script
+    const vbsPath = path.join(os.homedir(), '.antigravity-mobile-proxy', 'launcher.vbs');
+    try {
+      if (fs.existsSync(vbsPath)) {
+        fs.unlinkSync(vbsPath);
+        console.log(`  ${fmt.success('Launcher script removed')}`);
+      }
+    } catch {}
 
   } else {
     console.log(`  ${fmt.error(`Unsupported platform: ${process.platform}`)}`);

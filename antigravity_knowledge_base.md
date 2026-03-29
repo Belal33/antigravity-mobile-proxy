@@ -272,3 +272,43 @@ if (/^\/[A-Za-z]:/.test(fsPath)) fsPath = fsPath.substring(1);
 | `lib/cdp/process-manager.ts` | `getPlatform()` via string concatenation (original fix) |
 | `lib/cdp/recent-projects.ts` | `getRuntimePlatform()` + resolver map + regex path detection |
 | `lib/init.ts` | IIFE with string concatenation for `IS_WIN` |
+
+---
+
+## Windows `schtasks` Path Quoting (Learned March 2026)
+
+### The Problem
+When using `schtasks /Create ... /TR "..."` on Windows, paths containing spaces (e.g. `C:\Program Files\nodejs\node.exe`) must NOT use escaped double-quotes (`\"...\"`). The `schtasks` command parser does not handle nested escaped double-quotes — it splits on the first space after the opening `"` and treats the remainder as a separate, invalid argument.
+
+**Error message:**
+```
+ERROR: Invalid argument/option - 'Files\nodejs\node.exe ...'
+```
+
+### The Fix — VBScript Hidden Launcher
+Running `node.exe` directly from `schtasks` opens a visible console window. The solution is a **VBScript wrapper** that launches Node invisibly:
+
+1. Write a `.vbs` file to `~/.antigravity-mobile-proxy/launcher.vbs`:
+```vbs
+CreateObject("WScript.Shell").Run """C:\Program Files\nodejs\node.exe"" ""path\to\cli.js"" --args", 0, False
+```
+   - The `0` parameter = **hidden window**
+   - `False` = don't wait for completion
+
+2. Point `schtasks /TR` at `wscript.exe` running the VBS file:
+```
+schtasks /Create /F /SC ONLOGON /TN "AntigravityProxy" /TR "wscript.exe 'path\to\launcher.vbs'" /RL HIGHEST
+```
+
+### Previous Attempt (Broken)
+Escaped double-quotes (`\"path\"`) in `/TR` don't work — `schtasks` parser splits on spaces and treats the rest as invalid arguments:
+```
+ERROR: Invalid argument/option - 'Files\nodejs\node.exe ...'
+```
+
+### Affected File
+| File | Location |
+|---|---|
+| `bin/cli.js` | `buildServiceConfig()` → `taskscheduler` branch |
+
+
