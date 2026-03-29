@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ConversationInfo } from '@/lib/types';
 
 interface ConversationSelectorProps {
@@ -29,20 +29,20 @@ export default function ConversationSelector({ conversations, activeConversation
   const [showAll, setShowAll] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    // Reset showAll when the dropdown closes
-    if (!open) setShowAll(false);
-  }, [open]);
+  const closeDropdown = useCallback(() => {
+    setOpen(false);
+    setShowAll(false);
+  }, []);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setOpen(false);
+        closeDropdown();
       }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  }, [closeDropdown]);
 
   // ── Partition conversations into sections ──
   // 1. "Current" — the active conversation (especially index === -1 synthetic ones)
@@ -89,7 +89,7 @@ export default function ConversationSelector({ conversations, activeConversation
                   if (current.index !== -1) {
                     onSelect(current.title);
                   }
-                  setOpen(false);
+                  closeDropdown();
                 }}
               >
                 <div className="conv-item-header">
@@ -132,7 +132,7 @@ export default function ConversationSelector({ conversations, activeConversation
                     className="conv-item"
                     onClick={() => {
                       onSelect(c.title);
-                      setOpen(false);
+                      closeDropdown();
                     }}
                   >
                     <div className="conv-item-header">

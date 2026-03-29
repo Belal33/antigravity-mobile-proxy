@@ -63,7 +63,7 @@
     "postbuild": "node scripts/patch-next.js",
     "start": "next start -p 5555",
     "tunnel": "node bin/cli.js",
-    "lint": "next lint",
+    "lint": "eslint .",
     "type-check": "tsc --noEmit",
     "prepublishOnly": "NODE_ENV=production npm run build"
   },

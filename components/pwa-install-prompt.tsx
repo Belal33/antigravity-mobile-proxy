@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
@@ -11,17 +12,23 @@ interface BeforeInstallPromptEvent extends Event {
 export default function PWAInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showBanner, setShowBanner] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
+  const [isIOS] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const ua = navigator.userAgent;
+    const isiOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|Chrome/.test(ua);
+    return isiOS && isSafari;
+  });
+  const [isStandalone] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone === true
+    );
+  });
 
   useEffect(() => {
-    // Check if already running as installed PWA
-    const standalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true;
-    setIsStandalone(standalone);
-
-    if (standalone) return; // Already installed, don't show
+    if (isStandalone) return; // Already installed, don't show
 
     // Check if user previously dismissed
     const dismissed = localStorage.getItem('pwa-install-dismissed');
@@ -31,13 +38,7 @@ export default function PWAInstallPrompt() {
       if (daysSince < 7) return; // Don't show for 7 days after dismiss
     }
 
-    // Detect iOS (Safari doesn't fire beforeinstallprompt)
-    const ua = navigator.userAgent;
-    const isiOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|Chrome/.test(ua);
-    setIsIOS(isiOS && isSafari);
-
-    if (isiOS && isSafari) {
+    if (isIOS) {
       // Show iOS instructions after a short delay
       const timer = setTimeout(() => setShowBanner(true), 3000);
       return () => clearTimeout(timer);
@@ -61,7 +62,7 @@ export default function PWAInstallPrompt() {
     return () => {
       window.removeEventListener('beforeinstallprompt', handler);
     };
-  }, []);
+  }, [isStandalone, isIOS]);
 
   const handleInstall = useCallback(async () => {
     if (!deferredPrompt) return;
@@ -118,7 +119,7 @@ export default function PWAInstallPrompt() {
         flexShrink: 0,
         border: '1px solid rgba(139, 92, 246, 0.2)',
       }}>
-        <img
+        <Image
           src="/icons/icon-192.png"
           alt="Antigravity"
           width={44}

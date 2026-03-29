@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 
 interface WindowInfo {
   index: number;
@@ -92,7 +93,7 @@ export default function DebugPage() {
     <div style={styles.page}>
       <header style={styles.header}>
         <div style={styles.headerLeft}>
-          <a href="/" style={styles.backLink}>← Chat</a>
+          <Link href="/" style={styles.backLink}>← Chat</Link>
           <h1 style={styles.title}>🔬 Scraper Debug</h1>
         </div>
         <span style={styles.badge}>Debug Tool</span>

@@ -8,44 +8,67 @@ import ChatInput from '@/components/chat-input';
 import ArtifactPanel from '@/components/artifact-panel';
 import ChangesPanel from '@/components/changes-panel';
 import NetworkBanner from '@/components/network-banner';
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 
 export default function ChatContainer() {
   const chat = useChat();
+
+  // Destructure all values used in JSX to avoid "Cannot access refs during render" lint errors.
+  // The useChat hook mixes ref-backed and state-backed values in its return object.
+  const {
+    statusState, statusText, windows, conversations, activeConversation,
+    cdpStatus, recentProjects, selectWindow, selectConversation,
+    startNewChat, startCdpServer, openNewWindow, closeWindowByIndex,
+    networkOnline, isConnected, isLoadingHistory, showWelcome,
+    messages, currentSteps, currentResponse, isStreaming,
+    sendMessage, stopStreaming, currentMode, toggleMode,
+    currentAgent, agents, isLoadingAgents, fetchAgentList, switchAgent,
+    toggleArtifactPanel, artifactFiles, artifactPanelOpen,
+    toggleChangesPanel, changeFiles, changesPanelOpen,
+    acceptAllChanges, rejectAllChanges, isAccepting, isRejecting,
+    messagesEndRef,
+  } = chat;
+
+  const handleRetry = useCallback(async () => {
+    try {
+      await fetch('/api/v1/health');
+      window.location.reload();
+    } catch { /* ignore */ }
+  }, []);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'n' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        chat.startNewChat();
+        startNewChat();
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [chat]);
+  }, [startNewChat]);
 
   return (
     <div className="app-container">
       <Header
-        statusState={chat.statusState}
-        statusText={chat.statusText}
-        windows={chat.windows}
-        conversations={chat.conversations}
-        activeConversation={chat.activeConversation}
-        cdpStatus={chat.cdpStatus}
-        recentProjects={chat.recentProjects}
-        onSelectWindow={chat.selectWindow}
-        onSelectConversation={chat.selectConversation}
-        onNewChat={chat.startNewChat}
-        onStartCdp={chat.startCdpServer}
-        onOpenWindow={chat.openNewWindow}
-        onCloseWindow={chat.closeWindowByIndex}
+        statusState={statusState}
+        statusText={statusText}
+        windows={windows}
+        conversations={conversations}
+        activeConversation={activeConversation}
+        cdpStatus={cdpStatus}
+        recentProjects={recentProjects}
+        onSelectWindow={selectWindow}
+        onSelectConversation={selectConversation}
+        onNewChat={startNewChat}
+        onStartCdp={startCdpServer}
+        onOpenWindow={openNewWindow}
+        onCloseWindow={closeWindowByIndex}
       />
 
-      <NetworkBanner networkOnline={chat.networkOnline} isConnected={chat.isConnected} />
+      <NetworkBanner networkOnline={networkOnline} isConnected={isConnected} />
 
       <main className="messages-area" role="log" aria-live="polite">
-        {chat.isLoadingHistory ? (
+        {isLoadingHistory ? (
           <div className="history-loading">
             <div className="history-loading-header">
               <div className="skeleton-shimmer skeleton-avatar" />
@@ -75,59 +98,54 @@ export default function ChatContainer() {
             </div>
             <p className="history-loading-text">Loading conversation history…</p>
           </div>
-        ) : chat.showWelcome ? (
-          <WelcomeScreen onQuickPrompt={chat.sendMessage} />
+        ) : showWelcome ? (
+          <WelcomeScreen onQuickPrompt={sendMessage} />
         ) : (
           <MessageList
-            messages={chat.messages}
-            currentSteps={chat.currentSteps}
-            currentResponse={chat.currentResponse}
-            isStreaming={chat.isStreaming}
-            onRetry={async () => {
-              try {
-                await fetch('/api/v1/health');
-                window.location.reload(); 
-              } catch { /* ignore */ }
-            }}
+            messages={messages}
+            currentSteps={currentSteps}
+            currentResponse={currentResponse}
+            isStreaming={isStreaming}
+            onRetry={handleRetry}
           />
         )}
-        <div ref={chat.messagesEndRef} />
+        <div ref={messagesEndRef} />
       </main>
 
       <ChatInput
-        onSend={chat.sendMessage}
-        onStop={chat.stopStreaming}
-        isStreaming={chat.isStreaming}
-        currentMode={chat.currentMode}
-        onToggleMode={chat.toggleMode}
-        currentAgent={chat.currentAgent}
-        agents={chat.agents}
-        isLoadingAgents={chat.isLoadingAgents}
-        onFetchAgents={chat.fetchAgentList}
-        onSwitchAgent={chat.switchAgent}
-        onToggleArtifacts={chat.toggleArtifactPanel}
-        artifactCount={chat.artifactFiles.length}
-        artifactPanelOpen={chat.artifactPanelOpen}
-        onToggleChanges={chat.toggleChangesPanel}
-        changesCount={chat.changeFiles.length}
-        changesPanelOpen={chat.changesPanelOpen}
+        onSend={sendMessage}
+        onStop={stopStreaming}
+        isStreaming={isStreaming}
+        currentMode={currentMode}
+        onToggleMode={toggleMode}
+        currentAgent={currentAgent}
+        agents={agents}
+        isLoadingAgents={isLoadingAgents}
+        onFetchAgents={fetchAgentList}
+        onSwitchAgent={switchAgent}
+        onToggleArtifacts={toggleArtifactPanel}
+        artifactCount={artifactFiles.length}
+        artifactPanelOpen={artifactPanelOpen}
+        onToggleChanges={toggleChangesPanel}
+        changesCount={changeFiles.length}
+        changesPanelOpen={changesPanelOpen}
       />
 
       <ArtifactPanel
-        open={chat.artifactPanelOpen}
-        onClose={chat.toggleArtifactPanel}
-        activeConversation={chat.activeConversation}
-        files={chat.artifactFiles}
+        open={artifactPanelOpen}
+        onClose={toggleArtifactPanel}
+        activeConversation={activeConversation}
+        files={artifactFiles}
       />
 
       <ChangesPanel
-        open={chat.changesPanelOpen}
-        onClose={chat.toggleChangesPanel}
-        changes={chat.changeFiles}
-        onAcceptAll={chat.acceptAllChanges}
-        onRejectAll={chat.rejectAllChanges}
-        isAccepting={chat.isAccepting}
-        isRejecting={chat.isRejecting}
+        open={changesPanelOpen}
+        onClose={toggleChangesPanel}
+        changes={changeFiles}
+        onAcceptAll={acceptAllChanges}
+        onRejectAll={rejectAllChanges}
+        isAccepting={isAccepting}
+        isRejecting={isRejecting}
       />
     </div>
   );

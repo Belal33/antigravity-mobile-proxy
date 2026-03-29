@@ -9,7 +9,6 @@
 import type { ProxyContext } from './types';
 
 declare global {
-  // eslint-disable-next-line no-var
   var __PROXY_CTX: ProxyContext | undefined;
 }
 

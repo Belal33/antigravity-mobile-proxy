@@ -52,9 +52,7 @@ export interface TunnelManagerEvents {
 
 export class TunnelManager extends EventEmitter {
   private config: TunnelConfig | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private ngrokMod: any = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private listener: any = null;
 
   private _state: TunnelState = 'idle';
@@ -113,7 +111,6 @@ export class TunnelManager extends EventEmitter {
     this._setState(this.reconnectAttempt === 0 ? 'connecting' : 'reconnecting');
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ngrok = this.ngrokMod as any;
 
       // Traffic Policy with a unique auth_id per session so stale cookies
