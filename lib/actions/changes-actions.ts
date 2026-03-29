@@ -5,8 +5,13 @@
  * to click the "Accept all" or "Reject all" buttons that appear
  * when there are file changes in the current conversation.
  *
+ * Panel state detection:
+ *   OPEN:   Gap container has a child with "File With Changes" text
+ *   CLOSED: Gap container has a child with "Review Changes" text instead
+ *
  * IMPORTANT: Uses the shared changes lock to prevent collisions with
- * the periodic changes scraper that also toggles the panel open/closed.
+ * the periodic changes scraper. We never close the panel after action
+ * to prevent visible "flashing" for the user.
  */
 
 import type { ProxyContext } from '../types';
@@ -19,7 +24,7 @@ interface ActionResult {
 }
 
 /**
- * Helper: opens the changes section, finds a button by text, clicks it.
+ * Helper: ensures the changes section is open, finds a button by text, clicks it.
  * Shared logic between accept and reject.
  */
 async function clickChangesButton(
@@ -32,51 +37,64 @@ async function clickChangesButton(
     const page = ctx.workbenchPage!;
 
     return page.evaluate(async (targetText: string) => {
+      // Helper: dispatch proper mouse events for React compatibility
+      function dispatchClick(el: Element) {
+        const rect = el.getBoundingClientRect();
+        const opts: MouseEventInit = {
+          bubbles: true, cancelable: true, view: window,
+          clientX: rect.x + rect.width / 2,
+          clientY: rect.y + rect.height / 2,
+        };
+        el.dispatchEvent(new MouseEvent('mousedown', opts));
+        el.dispatchEvent(new MouseEvent('mouseup', opts));
+        el.dispatchEvent(new MouseEvent('click', opts));
+      }
+
       const panel = document.querySelector('.antigravity-agent-side-panel');
       if (!panel) return { success: false, error: 'No panel found' };
 
       const gapContainer = panel.querySelector('.flex.grow.flex-col.justify-start.gap-8');
       if (!gapContainer) return { success: false, error: 'No gap container' };
 
-      // Check if the changes section is already visible
+      // ── Detect panel state ──
+      // Uses "File With Changes" which matches both singular and plural
       let section = Array.from(gapContainer.children).find(c =>
-        (c.textContent || '').includes('Files With Changes')
+        (c.textContent || '').includes('File With Changes')
       ) as HTMLElement | undefined;
 
-      let didOpen = false;
-
       if (!section) {
-        // Toggle the changesOverview button to open it
+        // Panel is CLOSED — check if there are even changes to show
+        const hasChanges = Array.from(gapContainer.children).some(c =>
+          (c.textContent || '').includes('Review Changes')
+        );
+        if (!hasChanges) {
+          return { success: false, error: 'No file changes in current conversation' };
+        }
+
+        // Open the panel via the tooltip button with dispatchEvent
         const toggleBtn = panel.querySelector('[data-tooltip-id="tooltip-changesOverview"]') as HTMLElement;
         if (!toggleBtn) return { success: false, error: 'No changesOverview toggle button found' };
 
-        toggleBtn.click();
-        // Wait longer than the scraper — we really need the section
+        dispatchClick(toggleBtn);
+
+        // Wait for the section to appear (up to 5s)
         for (let i = 0; i < 20; i++) {
           await new Promise(r => setTimeout(r, 250));
           section = Array.from(gapContainer.children).find(c =>
-            (c.textContent || '').includes('Files With Changes')
+            (c.textContent || '').includes('File With Changes')
           ) as HTMLElement | undefined;
           if (section) break;
         }
-        didOpen = true;
       }
 
       if (!section) {
-        // Close if we opened but nothing appeared
-        if (didOpen) {
-          const toggleBtn = panel.querySelector('[data-tooltip-id="tooltip-changesOverview"]') as HTMLElement;
-          if (toggleBtn) toggleBtn.click();
-        }
+        // Could not open the panel — don't attempt to close, just return
         return { success: false, error: 'Changes section not found — no file changes?' };
       }
 
-      // Search strategies (broadening):
-      // 1. Exact button text match
-      // 2. Case-insensitive partial match
-      // 3. Any clickable element with matching text
+      // ── Find and click the target button ──
       const buttons = Array.from(section.querySelectorAll('button'));
-      
+
       // Strategy 1: exact case-insensitive match on button text
       let targetBtn = buttons.find(b => {
         const t = (b.textContent || '').trim().toLowerCase();
@@ -91,7 +109,7 @@ async function clickChangesButton(
         });
       }
 
-      // Strategy 3: look at ALL elements, not just buttons
+      // Strategy 3: look at ALL clickable elements
       if (!targetBtn) {
         const allElements = Array.from(section.querySelectorAll('*'));
         const matchEl = allElements.find(el => {
@@ -99,36 +117,20 @@ async function clickChangesButton(
           return t === targetText && typeof (el as HTMLElement).click === 'function';
         }) as HTMLElement | undefined;
         if (matchEl) {
-          matchEl.click();
-          // Close if we opened
-          if (didOpen) {
-            await new Promise(r => setTimeout(r, 200));
-            const toggleBtn = panel.querySelector('[data-tooltip-id="tooltip-changesOverview"]') as HTMLElement;
-            if (toggleBtn) toggleBtn.click();
-          }
+          dispatchClick(matchEl);
+          // DO NOT close the panel — leave it open to prevent flashing
           return { success: true, clicked: (matchEl.textContent || '').trim() };
         }
       }
 
       if (targetBtn) {
-        targetBtn.click();
-        // Close if we opened
-        if (didOpen) {
-          await new Promise(r => setTimeout(r, 200));
-          const toggleBtn = panel.querySelector('[data-tooltip-id="tooltip-changesOverview"]') as HTMLElement;
-          if (toggleBtn) toggleBtn.click();
-        }
+        dispatchClick(targetBtn);
+        // DO NOT close the panel — leave it open to prevent flashing
         return { success: true, clicked: (targetBtn.textContent || '').trim() };
       }
 
       // Debug: list all button texts found for troubleshooting
       const foundButtons = buttons.map(b => b.textContent?.trim()).filter(Boolean);
-
-      // Close if we opened
-      if (didOpen) {
-        const toggleBtn = panel.querySelector('[data-tooltip-id="tooltip-changesOverview"]') as HTMLElement;
-        if (toggleBtn) toggleBtn.click();
-      }
 
       return {
         success: false,
@@ -151,3 +153,4 @@ export async function clickAcceptAllChanges(ctx: ProxyContext): Promise<ActionRe
 export async function clickRejectAllChanges(ctx: ProxyContext): Promise<ActionResult> {
   return clickChangesButton(ctx, 'reject all');
 }
+
