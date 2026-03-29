@@ -31,7 +31,7 @@ const nextConfig = {
   // from next.config.ts via SWC. The default generateBuildId becomes undefined,
   // causing "TypeError: generate is not a function" during the build.
   // Using next.config.js (CJS) avoids this TS transpilation path entirely.
-  generateBuildId: async () => 'standalone-build',
+  generateBuildId: async () => `v${require('./package.json').version}`,
 };
 
 module.exports = withPWA(nextConfig);
