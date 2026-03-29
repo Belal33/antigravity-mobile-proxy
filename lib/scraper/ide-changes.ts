@@ -2,19 +2,29 @@
  * IDE Changes Overview Scraper
  *
  * Scrapes the "Changes Overview" section from the IDE's agent panel.
- * This section lists files that have been modified/created/deleted 
+ * This section lists files that have been modified/created/deleted
  * during the current conversation, with +additions/-deletions counts.
+ *
+ * Panel states:
+ *   CLOSED: Shows "Review Changes" button in the toolbar
+ *   OPEN:   Shows "N File(s) With Changes" header with file list dropdown
  *
  * DOM structure (when open):
  *   .flex.grow.flex-col.justify-start.gap-8
  *     └ div.relative.flex.flex-col.mb-2
  *       └ div.px-2 (header bar)
- *         └ div (the outline container)
- *           ├ span "N Files With Changes"
+ *         └ div.outline-solid (the outline container)
+ *           ├ span "N File(s) With Changes"
  *           ├ "Reject all" / "Accept all"
  *           └ div.pointer-events-none.absolute.bottom-full (dropdown)
- *             └ div.flex.flex-col (rows container)
- *               └ each row: [+][N][-][M] [filename] [filepath]
+ *             └ div.pointer-events-auto (inner wrapper)
+ *               └ div.max-h-80 (scrollable area)
+ *                 └ div.flex.flex-col (rows container)
+ *                   └ each row: [+N] [-M] [filename] [filepath]
+ *
+ * IMPORTANT: We never close the panel after reading. Once opened, we leave
+ * it open so subsequent poll cycles read directly without toggling,
+ * which eliminates the visible "flash" the user would see.
  */
 
 import type { ProxyContext } from '../types';
@@ -48,48 +58,71 @@ export async function getIdeChanges(ctx: ProxyContext): Promise<IdeChangesResult
         const gapContainer = panel.querySelector('.flex.grow.flex-col.justify-start.gap-8');
         if (!gapContainer) return { changes: [] as any[], totalCount: 0, error: 'no gap container' };
 
-        // Check if the changes section is already visible
+        // ── Detect panel state ──
+        // OPEN:   A child of gapContainer contains "File With Changes" (matches both singular & plural)
+        // CLOSED: A child contains "Review Changes" instead
         let section = Array.from(gapContainer.children).find(c =>
-          (c.textContent || '').includes('Files With Changes')
+          (c.textContent || '').includes('File With Changes')
         ) as HTMLElement | undefined;
 
-        let didOpen = false;
-
         if (!section) {
-          // Toggle the changesOverview button to open it
+          // Panel is CLOSED — check if there are even changes to show
+          const hasChanges = Array.from(gapContainer.children).some(c =>
+            (c.textContent || '').includes('Review Changes')
+          );
+          if (!hasChanges) {
+            // No changes at all — nothing to scrape
+            return { changes: [] as any[], totalCount: 0 };
+          }
+
+          // Click the changesOverview tooltip button to open the panel.
+          // Use dispatchEvent with full mouse event sequence for React compatibility.
           const btn = panel.querySelector('[data-tooltip-id="tooltip-changesOverview"]') as HTMLElement;
           if (!btn) return { changes: [] as any[], totalCount: 0, error: 'no changesOverview button' };
 
-          btn.click();
-          // Wait for the section to appear
+          const rect = btn.getBoundingClientRect();
+          const evtOpts = {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            clientX: rect.x + rect.width / 2,
+            clientY: rect.y + rect.height / 2,
+          };
+          btn.dispatchEvent(new MouseEvent('mousedown', evtOpts));
+          btn.dispatchEvent(new MouseEvent('mouseup', evtOpts));
+          btn.dispatchEvent(new MouseEvent('click', evtOpts));
+
+          // Wait for the section to appear (up to 3s)
           for (let i = 0; i < 10; i++) {
             await new Promise(r => setTimeout(r, 300));
             section = Array.from(gapContainer.children).find(c =>
-              (c.textContent || '').includes('Files With Changes')
+              (c.textContent || '').includes('File With Changes')
             ) as HTMLElement | undefined;
             if (section) break;
           }
-          didOpen = true;
         }
 
         if (!section) {
-          // Close if we opened but nothing appeared
-          if (didOpen) {
-            const btn = panel.querySelector('[data-tooltip-id="tooltip-changesOverview"]') as HTMLElement;
-            if (btn) btn.click();
-          }
+          // Still couldn't open — don't try to close, just return empty
           return { changes: [] as any[], totalCount: 0 };
         }
 
-        // Find the dropdown containing file rows
-        const dropdown = section.querySelector(
-          '.pointer-events-none.absolute.bottom-full .flex.flex-col'
-        );
+        // ── Read file changes from the dropdown ──
+        // The dropdown is inside the header bar:
+        //   .pointer-events-none.absolute.bottom-full
+        //     └ .pointer-events-auto (wrapper)
+        //       └ .max-h-80 (scrollable)
+        //         └ .flex.flex-col (rows)
+        // Try multiple selectors for robustness
+        let rowsContainer =
+          section.querySelector('.pointer-events-none.absolute.bottom-full .flex.flex-col') ||
+          section.querySelector('.pointer-events-none .flex.flex-col') ||
+          section.querySelector('.max-h-80 .flex.flex-col');
 
         const changes: any[] = [];
 
-        if (dropdown) {
-          const rows = Array.from(dropdown.children);
+        if (rowsContainer) {
+          const rows = Array.from(rowsContainer.children);
           for (const row of rows) {
             const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
             const texts: string[] = [];
@@ -98,8 +131,8 @@ export async function getIdeChanges(ctx: ProxyContext): Promise<IdeChangesResult
               if (t) texts.push(t);
             }
 
-            // Parse: ["+"] ["N"] ["-"] ["M"] ["filename.ext"] ["path/to/filename.ext"]
-            // The + and number may be separate text nodes
+            // Parse: ["+N"] ["-M"] ["filename.ext"] ["path/to/filename.ext"]
+            // Tokens may be combined ("+28") or separate ("+" "28")
             let additions = 0, deletions = 0;
             let filename = '', filepath = '';
 
@@ -117,7 +150,7 @@ export async function getIdeChanges(ctx: ProxyContext): Promise<IdeChangesResult
 
               // Handle "+" and number as separate tokens
               if (t === '+') { plusSeen = true; continue; }
-              if (t === '-') { minusSeen = true; continue; }
+              if (t === '-' || t === '−') { minusSeen = true; continue; }
 
               // Number after +/-
               if (plusSeen && t.match(/^\d+$/)) {
@@ -149,17 +182,15 @@ export async function getIdeChanges(ctx: ProxyContext): Promise<IdeChangesResult
           }
         }
 
-        // Get total count from header
+        // Get total count from header span
         const headerSpan = section.querySelector('span');
         const headerText = headerSpan ? (headerSpan.textContent || '').trim() : '';
         const totalMatch = headerText.match(/^(\d+)/);
         const totalCount = totalMatch ? parseInt(totalMatch[1]) : changes.length;
 
-        // Close the section if we opened it
-        if (didOpen) {
-          const btn = panel.querySelector('[data-tooltip-id="tooltip-changesOverview"]') as HTMLElement;
-          if (btn) btn.click();
-        }
+        // ── DO NOT close the panel ──
+        // Leaving it open means subsequent polls will find the section directly
+        // without toggling, eliminating the visible "flash" for the user.
 
         return { changes, totalCount };
       });
@@ -175,3 +206,4 @@ export async function getIdeChanges(ctx: ProxyContext): Promise<IdeChangesResult
     }
   });
 }
+
