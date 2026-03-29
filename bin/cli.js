@@ -1074,9 +1074,14 @@ function buildServiceConfig({ email, port, authtoken }) {
 
   if (svc.type === 'systemd') {
     // ── Linux: systemd user service ─────────────────────────────────
+    // IMPORTANT: Antigravity is an Electron (GUI) app. The service must:
+    // 1. Wait for the graphical session to be ready (graphical-session.target)
+    // 2. Pass DISPLAY and XDG_RUNTIME_DIR so Electron can find the display server
+    // Without these, spawning Antigravity from auto-recovery will crash (exit 0)
+    // and the process reuse mechanism may corrupt manually-opened instances.
     return `[Unit]
 Description=Antigravity Mobile Proxy (ngrok tunnel + Next.js server)
-After=network-online.target
+After=network-online.target graphical-session.target
 Wants=network-online.target
 
 [Service]
@@ -1086,6 +1091,8 @@ WorkingDirectory=${projectRoot}
 Environment="PATH=${path.dirname(nodePath)}:/usr/local/bin:/usr/bin:/bin"
 Environment="NODE_ENV=production"
 Environment="HOME=${os.homedir()}"
+Environment="DISPLAY=:1"
+Environment="XDG_RUNTIME_DIR=/run/user/${process.getuid ? process.getuid() : 1000}"
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=15

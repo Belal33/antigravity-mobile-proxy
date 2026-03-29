@@ -233,6 +233,22 @@ export async function startCdpServer(
     return { success: false, message: `Directory not found: "${absoluteDir}"` };
   }
 
+  // ── Pre-flight: Ensure a display server is available on Linux ─────────
+  // Antigravity is an Electron (GUI) app. Without DISPLAY or WAYLAND_DISPLAY,
+  // Chromium/Electron will crash immediately with exit code 0. This is the root
+  // cause of post-reboot crashes when the systemd service starts before the
+  // graphical session is ready.
+  if (!isWin() && !isMac()) {
+    const hasDisplay = !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
+    if (!hasDisplay) {
+      logger.error('[ProcessManager] No DISPLAY or WAYLAND_DISPLAY set. Cannot launch Antigravity (Electron GUI app) without a display server. Skipping spawn.');
+      return {
+        success: false,
+        message: 'No display server available (DISPLAY/WAYLAND_DISPLAY not set). Antigravity requires a graphical session. The proxy will connect once you open Antigravity manually.',
+      };
+    }
+  }
+
   // Spawn the Antigravity binary
   try {
     logger.info(`[ProcessManager] Starting Antigravity: ${binaryPath} --remote-debugging-port=${CDP_PORT} --new-window "${absoluteDir}"`);
