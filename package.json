@@ -1,6 +1,6 @@
 {
   "name": "antigravity-mobile-proxy",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Chat with your Antigravity AI coding agent from any device — mobile proxy with secure ngrok tunnel, real-time streaming, and remote approve/reject",
   "keywords": [
     "antigravity",
