@@ -1,38 +1,14 @@
-# Source & config files (not needed at runtime)
-src/
-app/
-components/
-lib/
-styles/
-*.ts
-*.tsx
-tsconfig.json
-tsconfig.tsbuildinfo
-next.config.js
-.env*
-.gitignore
-
-# Dev tooling
+public/demo.gif
 node_modules/
+.next/
 scripts/
-.next/cache/
-.next/standalone/tsconfig.json
-.next/standalone/tsconfig.tsbuildinfo
-
-# ── Heavy modules that Next.js standalone traces but aren't needed ──
-
-# TypeScript compiler (20 MB) – only needed at build time
-.next/standalone/node_modules/typescript/
-
-# Sharp native image binaries (33 MB) – not used by this app at runtime
-.next/standalone/node_modules/@img/
-.next/standalone/node_modules/sharp/
-
-# Debug/dev scripts copied into standalone
-.next/standalone/scripts/
-.next/standalone/report.md
-.next/standalone/README.md
-.next/standalone/package-lock.json
-
-# Source maps (not needed in production)
-.next/static/chunks/*.map
+src/
+*.tsbuildinfo
+tsconfig.json
+eslint.config.js
+next.config.js
+.gitignore
+.prettierrc
+.npmignore
+# Although 'files' in package.json takes precedence, 
+# we keep this for clarity and safety.
