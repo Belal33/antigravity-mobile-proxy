@@ -46,8 +46,10 @@
     "!public/demo.gif",
     ".next/standalone/server.js",
     ".next/standalone/.next/",
+    "!.next/standalone/.next/package.json",
+    "!.next/standalone/package.json",
+    "!.next/package.json",
     ".next/static/",
-    "package.json",
     "LICENSE",
     "README.md"
   ],
