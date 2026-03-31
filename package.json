@@ -47,7 +47,9 @@
     ".next/standalone/server.js",
     ".next/standalone/.next/",
     ".next/static/",
-    "package.json"
+    "package.json",
+    "LICENSE",
+    "README.md"
   ],
   "scripts": {
     "dev": "next dev -p 5555",
