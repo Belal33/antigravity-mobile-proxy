@@ -987,18 +987,53 @@ class TunnelManager {
   _printConnected(url) {
     console.log(`  ${fmt.success('ngrok tunnel established')}`);
     console.log('');
-    console.log(`  ${c.bold}${c.cyan}╔═══════════════════════════════════════════════════════╗${c.reset}`);
-    console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
-    console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${c.green}${c.bold}🌐 Your app is live!${c.reset}                              ${c.bold}${c.cyan}║${c.reset}`);
-    console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
-    console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${url} ${' '.repeat(Math.max(0, 39 - url.length))}${c.bold}${c.cyan}║${c.reset}`);
-    console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
-    console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${c.dim}🔒 Google OAuth → ${this.email}${' '.repeat(Math.max(0, 23 - this.email.length))}${c.reset}${c.bold}${c.cyan}║${c.reset}`);
-    console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
-    console.log(`  ${c.bold}${c.cyan}╚═══════════════════════════════════════════════════════╝${c.reset}`);
-    console.log('');
-    console.log(`  ${fmt.dim('Press Ctrl+C to stop.')}`);
-    console.log('');
+
+    // Generate QR code for the URL so users can scan from their phone
+    try {
+      const qrcode = require('qrcode-terminal');
+      qrcode.generate(url, { small: true }, (qrString) => {
+        console.log(`  ${c.bold}${c.cyan}╔═══════════════════════════════════════════════════════╗${c.reset}`);
+        console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
+        console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${c.green}${c.bold}🌐 Your app is live!${c.reset}                              ${c.bold}${c.cyan}║${c.reset}`);
+        console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
+        console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${c.dim}Scan the QR code to open on your phone:${c.reset}            ${c.bold}${c.cyan}║${c.reset}`);
+        console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
+
+        // Print each line of the QR code, centered in the box
+        const qrLines = qrString.split('\n').filter(l => l.length > 0);
+        for (const line of qrLines) {
+          const visibleLen = line.replace(/\x1b\[[0-9;]*m/g, '').length;
+          const padLeft = Math.max(0, Math.floor((55 - visibleLen) / 2));
+          const padRight = Math.max(0, 55 - visibleLen - padLeft);
+          console.log(`  ${c.bold}${c.cyan}║${c.reset}${' '.repeat(padLeft)}${c.green}${line}${c.reset}${' '.repeat(padRight)}${c.bold}${c.cyan}║${c.reset}`);
+        }
+
+        console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
+        console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${c.dim}Or open manually:${c.reset}                                  ${c.bold}${c.cyan}║${c.reset}`);
+        console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${url} ${' '.repeat(Math.max(0, 39 - url.length))}${c.bold}${c.cyan}║${c.reset}`);
+        console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
+        console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${c.dim}🔒 Google OAuth → ${this.email}${' '.repeat(Math.max(0, 23 - this.email.length))}${c.reset}${c.bold}${c.cyan}║${c.reset}`);
+        console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
+        console.log(`  ${c.bold}${c.cyan}╚═══════════════════════════════════════════════════════╝${c.reset}`);
+        console.log('');
+        console.log(`  ${fmt.dim('Press Ctrl+C to stop.')}`);
+        console.log('');
+      });
+    } catch {
+      // Fallback: if qrcode-terminal is not available, show URL only
+      console.log(`  ${c.bold}${c.cyan}╔═══════════════════════════════════════════════════════╗${c.reset}`);
+      console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
+      console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${c.green}${c.bold}🌐 Your app is live!${c.reset}                              ${c.bold}${c.cyan}║${c.reset}`);
+      console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
+      console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${url} ${' '.repeat(Math.max(0, 39 - url.length))}${c.bold}${c.cyan}║${c.reset}`);
+      console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
+      console.log(`  ${c.bold}${c.cyan}║${c.reset}   ${c.dim}🔒 Google OAuth → ${this.email}${' '.repeat(Math.max(0, 23 - this.email.length))}${c.reset}${c.bold}${c.cyan}║${c.reset}`);
+      console.log(`  ${c.bold}${c.cyan}║${c.reset}                                                       ${c.bold}${c.cyan}║${c.reset}`);
+      console.log(`  ${c.bold}${c.cyan}╚═══════════════════════════════════════════════════════╝${c.reset}`);
+      console.log('');
+      console.log(`  ${fmt.dim('Press Ctrl+C to stop.')}`);
+      console.log('');
+    }
   }
 
   async stop() {
