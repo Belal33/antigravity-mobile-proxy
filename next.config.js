@@ -1,3 +1,4 @@
+const path = require('path');
 const withPWA = require("@ducanh2912/next-pwa").default({
   dest: "public",
   disable: process.env.NODE_ENV === "development",
@@ -32,6 +33,10 @@ const nextConfig = {
   // causing "TypeError: generate is not a function" during the build.
   // Using next.config.js (CJS) avoids this TS transpilation path entirely.
   generateBuildId: async () => `v${require('./package.json').version}`,
+  webpack: (config) => {
+    config.resolve.alias['@'] = __dirname;
+    return config;
+  },
 };
 
 module.exports = withPWA(nextConfig);
