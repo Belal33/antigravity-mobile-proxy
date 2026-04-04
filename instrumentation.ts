@@ -9,7 +9,13 @@
 export async function register() {
   // Only run on the Node.js runtime (not the Edge runtime).
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    const { startNetworkWatchdog } = await import('./lib/init');
+    const { startNetworkWatchdog, ensureCdpConnection } = await import('./lib/init');
     startNetworkWatchdog();
+
+    // Start CDP connection eagerly so it's ready before the first API request.
+    // Fire-and-forget: don't block server startup — auto-recovery handles failures.
+    ensureCdpConnection().catch((e) => {
+      console.warn(`[Startup] CDP init failed (will retry on first request): ${e.message}`);
+    });
   }
 }
