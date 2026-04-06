@@ -74,6 +74,9 @@ export async function clickRejectButton(ctx: ProxyContext) {
 
 /**
  * Click any footer button by toolId + buttonText.
+ * Search strategy (narrowest to widest):
+ *   1. The element tagged with data-proxy-tool-id (and its immediate next sibling)
+ *   2. The full agent panel as a fallback
  */
 export async function clickActionButton(
   ctx: ProxyContext,
@@ -87,27 +90,60 @@ export async function clickActionButton(
       const panel = document.querySelector('.antigravity-agent-side-panel');
       if (!panel) return { success: false, error: 'No panel found' };
 
-      let searchRoot: Element = panel;
+      const matchBtn = (btn: HTMLButtonElement) => {
+        const t = (btn.textContent || '').trim();
+        // Case-insensitive exact match (handles "Allow Once" vs "allow once")
+        return t.toLowerCase() === btext.toLowerCase() && !btn.disabled;
+      };
+
+      // ── Search 1: Scoped to the tagged element and its next sibling ──
       if (tid) {
-        const scoped = panel.querySelector(
-          `[data-proxy-tool-id="${tid}"]`
-        );
-        if (scoped) searchRoot = scoped;
+        const scoped = panel.querySelector(`[data-proxy-tool-id="${tid}"]`);
+        if (scoped) {
+          // Search inside the tagged element
+          const insideBtns = Array.from(scoped.querySelectorAll('button')) as HTMLButtonElement[];
+          const inside = insideBtns.find(matchBtn);
+          if (inside) {
+            inside.click();
+            return { success: true, clicked: inside.textContent?.trim() };
+          }
+
+          // Search in next sibling (permission bars often render just after the tool row)
+          const nextSib = scoped.nextElementSibling;
+          if (nextSib) {
+            const sibBtns = Array.from(nextSib.querySelectorAll('button')) as HTMLButtonElement[];
+            const sibBtn = sibBtns.find(matchBtn);
+            if (sibBtn) {
+              sibBtn.click();
+              return { success: true, clicked: sibBtn.textContent?.trim() };
+            }
+          }
+
+          // Search in prev sibling too
+          const prevSib = scoped.previousElementSibling;
+          if (prevSib) {
+            const prevBtns = Array.from(prevSib.querySelectorAll('button')) as HTMLButtonElement[];
+            const prevBtn = prevBtns.find(matchBtn);
+            if (prevBtn) {
+              prevBtn.click();
+              return { success: true, clicked: prevBtn.textContent?.trim() };
+            }
+          }
+        }
       }
 
-      const buttons = Array.from(searchRoot.querySelectorAll('button'));
-      const target = buttons.find((b) => {
-        const t = b.textContent?.trim() || '';
-        return t.toLowerCase() === btext.toLowerCase() && !b.disabled;
-      });
-
+      // ── Search 2: Full panel scan (permission may be floating anywhere) ──
+      const allPanelBtns = Array.from(panel.querySelectorAll('button')) as HTMLButtonElement[];
+      const target = allPanelBtns.find(matchBtn);
       if (target) {
         target.click();
         return { success: true, clicked: target.textContent?.trim() };
       }
-      return { success: false, error: `Button "${btext}" not found` };
+
+      return { success: false, error: `Button "${btext}" not found anywhere in panel` };
     },
     toolId,
     buttonText
   );
 }
+

@@ -599,8 +599,123 @@ export async function getFullAgentState(ctx: ProxyContext): Promise<AgentState> 
     }
     (window as any).__proxyToolCounter = toolCounter;
 
-    // ── 4c. Permission dialogs ──
+    // ── 4c. Permission dialogs (broad scan) ──
+    // The Antigravity permission UI can appear as a standalone element anywhere
+    // in the conversation turn — not just inside .flex.flex-col.space-y-2 rows.
+    // Strategy: scan for ALL buttons with permission words inside scopeEl,
+    // group them by their nearest common container, then register each group
+    // as a permission tool call (or attach to the last unresolved tool call).
     try {
+      const PERM_REGEX = /^(allow|deny|allow once|allow this conversation|block)$/i;
+
+      // Collect all permission-word buttons in this turn's scope
+      const allScopeButtons = Array.from(scopeEl.querySelectorAll('button')) as HTMLButtonElement[];
+      const permButtons = allScopeButtons.filter(btn => {
+        const text = (btn.textContent || '').trim();
+        return PERM_REGEX.test(text) && !btn.disabled;
+      });
+
+      if (permButtons.length > 0) {
+        // Group buttons by their nearest shared container (<= 4 levels up from button)
+        const containerMap = new Map<HTMLElement, HTMLButtonElement[]>();
+        for (const btn of permButtons) {
+          // Walk up to find the most specific containing div that holds ALL buttons
+          // in the same permission group. Use the button's grandparent (action row).
+          let container: HTMLElement = btn.parentElement as HTMLElement;
+          // Walk up until we find a div that also contains at least one sibling permission btn
+          for (let depth = 0; depth < 4; depth++) {
+            const parent = container?.parentElement as HTMLElement;
+            if (!parent || parent === (scopeEl as HTMLElement)) break;
+            const siblingsWithPerm = Array.from(parent.querySelectorAll('button')).filter(b =>
+              PERM_REGEX.test((b.textContent || '').trim())
+            );
+            if (siblingsWithPerm.length >= 2) {
+              container = parent;
+              break;
+            }
+            container = parent;
+          }
+
+          if (!containerMap.has(container)) containerMap.set(container, []);
+          containerMap.get(container)!.push(btn);
+        }
+
+        for (const [container, btns] of containerMap) {
+          const containerEl = container as HTMLElement;
+          const permBtnTexts = btns.map(b => (b.textContent || '').trim()).filter(Boolean);
+          const actionButtons = permBtnTexts.filter(isHitlAction);
+          if (actionButtons.length === 0) continue;
+
+          // Check if this container was already captured
+          const alreadyCaptured =
+            containerEl.dataset?.proxyToolId &&
+            toolCalls.some(
+              (tc: BrowserToolCall) =>
+                tc.id === containerEl.dataset.proxyToolId &&
+                tc.footerButtons.length > 0
+            );
+          if (alreadyCaptured) continue;
+
+          // Also check if any existing tool call already has these footerButtons
+          const footerKey = JSON.stringify(actionButtons.slice().sort());
+          const alreadyInTools = toolCalls.some(
+            (tc: BrowserToolCall) =>
+              JSON.stringify((tc.footerButtons || []).slice().sort()) === footerKey &&
+              tc.footerButtons.length > 0
+          );
+          if (alreadyInTools) continue;
+
+          // Get descriptive text from the container (e.g. what file/resource needs permission)
+          const containerText = containerEl.textContent || '';
+          const pathMatch = containerText.match(/access to\s+(.+?)(?:\?|$)/i) ||
+                            containerText.match(/read\s+(.+?)(?:\?|$)/i) ||
+                            containerText.match(/open\s+(.+?)(?:\?|$)/i);
+          const permPath = pathMatch ? pathMatch[1].trim().substring(0, 120) : '';
+
+          // Try to attach to the last tool call that has no footer buttons yet
+          const lastToolWithoutButtons = [...toolCalls]
+            .reverse()
+            .find((tc: BrowserToolCall) => tc.footerButtons.length === 0);
+
+          if (lastToolWithoutButtons) {
+            lastToolWithoutButtons.footerButtons = actionButtons;
+            lastToolWithoutButtons.hasCancelBtn = actionButtons.some(
+              (t: string) => t.toLowerCase() === 'deny' || t.toLowerCase() === 'cancel'
+            );
+            // Tag the container element for next-poll dedup
+            if (!containerEl.dataset.proxyToolId) {
+              containerEl.dataset.proxyToolId = lastToolWithoutButtons.id;
+            }
+          } else {
+            // Create a standalone permission entry
+            if (!containerEl.dataset.proxyToolId) {
+              containerEl.dataset.proxyToolId = String(
+                (window as any).__proxyToolCounter++
+              );
+            }
+            toolCalls.push({
+              id: containerEl.dataset.proxyToolId,
+              status: 'Permission Required',
+              type: 'read',
+              path: permPath,
+              command: null,
+              exitCode: null,
+              hasCancelBtn: true,
+              footerButtons: actionButtons,
+              hasTerminal: false,
+              terminalOutput: null,
+              additions: null,
+              deletions: null,
+              lineRange: null,
+              mcpToolName: null,
+              mcpArgs: null,
+              mcpOutput: null,
+            });
+          }
+        }
+      }
+
+      // ── Legacy: also scan the space-y-2 row containers (kept for compatibility) ──
       const allPanelRows = panel.querySelectorAll(
         '.flex.flex-col.space-y-2 > .flex.flex-row:not(.my-2)'
       );
@@ -627,45 +742,42 @@ export async function getFullAgentState(ctx: ProxyContext): Promise<AgentState> 
         const actionButtons = permBtnTexts.filter(isHitlAction);
         if (actionButtons.length === 0) continue;
 
-        const lastAnalyzed = [...toolCalls]
-          .reverse()
-          .find((tc: BrowserToolCall) => /^(Analyzed|Read|Viewed)/i.test(tc.status));
+        // Also skip if these buttons were already captured by the broad scan above
+        const footerKey = JSON.stringify(actionButtons.slice().sort());
+        const alreadyInTools = toolCalls.some(
+          (tc: BrowserToolCall) =>
+            JSON.stringify((tc.footerButtons || []).slice().sort()) === footerKey &&
+            tc.footerButtons.length > 0
+        );
+        if (alreadyInTools) continue;
 
-        if (lastAnalyzed && lastAnalyzed.footerButtons.length === 0) {
-          lastAnalyzed.footerButtons = actionButtons;
-          lastAnalyzed.hasCancelBtn = actionButtons.some(
-            (t: string) =>
-              t.toLowerCase() === 'deny' || t.toLowerCase() === 'cancel'
+        if (!permRowEl.dataset.proxyToolId) {
+          permRowEl.dataset.proxyToolId = String(
+            (window as any).__proxyToolCounter++
           );
-        } else {
-          if (!permRowEl.dataset.proxyToolId) {
-            permRowEl.dataset.proxyToolId = String(
-              (window as any).__proxyToolCounter++
-            );
-          }
-          const permText = permRowEl.textContent || '';
-          const pathMatch = permText.match(/access to\s+(.+?)(?:\?|$)/i);
-          const permPath = pathMatch ? pathMatch[1].trim() : '';
-
-          toolCalls.push({
-            id: permRowEl.dataset.proxyToolId,
-            status: 'Permission Required',
-            type: 'read',
-            path: permPath,
-            command: null,
-            exitCode: null,
-            hasCancelBtn: true,
-            footerButtons: actionButtons,
-            hasTerminal: false,
-            terminalOutput: null,
-            additions: null,
-            deletions: null,
-            lineRange: null,
-            mcpToolName: null,
-            mcpArgs: null,
-            mcpOutput: null,
-          });
         }
+        const permText = permRowEl.textContent || '';
+        const pathMatch = permText.match(/access to\s+(.+?)(?:\?|$)/i);
+        const permPath = pathMatch ? pathMatch[1].trim() : '';
+
+        toolCalls.push({
+          id: permRowEl.dataset.proxyToolId,
+          status: 'Permission Required',
+          type: 'read',
+          path: permPath,
+          command: null,
+          exitCode: null,
+          hasCancelBtn: true,
+          footerButtons: actionButtons,
+          hasTerminal: false,
+          terminalOutput: null,
+          additions: null,
+          deletions: null,
+          lineRange: null,
+          mcpToolName: null,
+          mcpArgs: null,
+          mcpOutput: null,
+        });
       }
     } catch {
       // Silent skip for resilience

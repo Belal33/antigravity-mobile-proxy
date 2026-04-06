@@ -25,6 +25,9 @@ interface ChatInputProps {
   onToggleChanges: () => void;
   changesCount: number;
   changesPanelOpen: boolean;
+  onToggleGit: () => void;
+  gitChangedCount: number;
+  gitPanelOpen: boolean;
 }
 
 export default function ChatInput({
@@ -32,6 +35,7 @@ export default function ChatInput({
   currentAgent, agents, isLoadingAgents, onFetchAgents, onSwitchAgent,
   onToggleArtifacts, artifactCount, artifactPanelOpen,
   onToggleChanges, changesCount, changesPanelOpen,
+  onToggleGit, gitChangedCount, gitPanelOpen,
 }: ChatInputProps) {
   const [value, setValue] = useState('');
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
@@ -221,6 +225,26 @@ export default function ChatInput({
           </svg>
           {changesCount > 0 && (
             <span className="changes-badge">{changesCount}</span>
+          )}
+        </button>
+
+        {/* Git Panel Toggle */}
+        <button
+          className={`git-toggle-btn ${gitPanelOpen ? 'active' : ''}`}
+          onClick={onToggleGit}
+          title={`Git${gitChangedCount > 0 ? ` (${gitChangedCount} changed)` : ''}`}
+          aria-label="Toggle git panel"
+          type="button"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="18" cy="18" r="3" />
+            <circle cx="6" cy="6" r="3" />
+            <path d="M13 6h3a2 2 0 0 1 2 2v7" />
+            <line x1="6" y1="9" x2="6" y2="21" />
+          </svg>
+          Git
+          {gitChangedCount > 0 && (
+            <span className="git-badge">{gitChangedCount}</span>
           )}
         </button>
 

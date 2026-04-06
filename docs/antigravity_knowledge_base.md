@@ -311,4 +311,23 @@ ERROR: Invalid argument/option - 'Files\nodejs\node.exe ...'
 |---|---|
 | `bin/cli.js` | `buildServiceConfig()` → `taskscheduler` branch |
 
+---
 
+## Agent DOM Scraping & Permission Dialogs (Learned April 2026)
+
+### Permission Dialog DOM Structure
+The Antigravity agent panel handles permission prompts (e.g., "Allow Once", "Deny", "Allow This Conversation") very differently from standard tool execution cards:
+- **Location**: Unlike standard tool cards that are grouped in `.flex.flex-col.space-y-2 > .flex.flex-row:not(.my-2)` containers, permission dialogs render as independent flex containers anywhere within the conversation turn (`#conversation .mx-auto > div`).
+- **Nesting**: The buttons are deeply nested containing text like "Allow Once", typically matching `DIV.ml-auto.flex.flex-row.gap-x-2.gap-y-2` as their immediate container.
+- **Scraping Strategy**: Instead of targeting specific predefined row classes, a **broad scan** approach is required. The scraper must search the current scope (or full panel) for any `<button>` matching the permission text regex `/^(allow|deny|allow once|allow this conversation|block)$/i`, then trace up `parentElement` chains to cluster them by a shared container, then assign them a `data-proxy-tool-id`. 
+
+### Button Click Fallbacks
+When invoking clicks via CDP (`page.evaluate`), scoping strictly to a `[data-proxy-tool-id]` can fail if the permission bar renders as a sibling to the active tool call instead of inside it. The robust approach is a multi-tiered search:
+1. Search inside the element tagged with `data-proxy-tool-id`.
+2. Fallback to searching the **next sibling** and **previous sibling**, as permission warnings often insert themselves adjacently.
+3. Final fallback to scanning the entire panel, matching on the exact button text (case-insensitive).
+
+### Next.js HMR vs Cached Production Bundles
+When testing server-side scraping logic updates (e.g., Route Handlers or `lib/` dependencies):
+- Running via `npm run dev` supports Hot Module Replacement (HMR) for most `lib/` files.
+- **However**, if the dev server was started via a globally installed CLI bin (e.g., `antigravity-mobile-proxy`), it runs the **compiled production `.next` cache**. In this state, touching source files will not apply changes. Diagnostic scripts running direct `puppeteer` evaluations are necessary to prove the logic works, after which the proxy must be fully rebuilt (`npm run build`) and restarted to serve the new logic.

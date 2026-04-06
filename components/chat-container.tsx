@@ -7,6 +7,7 @@ import MessageList from '@/components/message-list';
 import ChatInput from '@/components/chat-input';
 import ArtifactPanel from '@/components/artifact-panel';
 import ChangesPanel from '@/components/changes-panel';
+import GitPanel from '@/components/git-panel';
 import NetworkBanner from '@/components/network-banner';
 import { useEffect, useCallback } from 'react';
 
@@ -26,6 +27,7 @@ export default function ChatContainer() {
     toggleArtifactPanel, artifactFiles, artifactPanelOpen,
     toggleChangesPanel, changeFiles, changesPanelOpen,
     acceptAllChanges, rejectAllChanges, isAccepting, isRejecting,
+    gitStatus, gitPanelOpen, gitChangedCount, toggleGitPanel, refreshGit,
     messagesEndRef,
   } = chat;
 
@@ -129,6 +131,9 @@ export default function ChatContainer() {
         onToggleChanges={toggleChangesPanel}
         changesCount={changeFiles.length}
         changesPanelOpen={changesPanelOpen}
+        onToggleGit={toggleGitPanel}
+        gitChangedCount={gitChangedCount}
+        gitPanelOpen={gitPanelOpen}
       />
 
       <ArtifactPanel
@@ -146,6 +151,13 @@ export default function ChatContainer() {
         onRejectAll={rejectAllChanges}
         isAccepting={isAccepting}
         isRejecting={isRejecting}
+      />
+
+      <GitPanel
+        open={gitPanelOpen}
+        onClose={toggleGitPanel}
+        gitStatus={gitStatus}
+        onRefresh={refreshGit}
       />
     </div>
   );

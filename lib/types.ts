@@ -147,6 +147,41 @@ export interface ChangeFile {
   deletions: number;
 }
 
+// ── Git Status Types ──
+
+export type GitFileStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'copied' | 'untracked' | 'unmerged';
+
+export interface GitFile {
+  path: string;
+  originalPath?: string;
+  status: GitFileStatus;
+  statusCode: string;
+}
+
+export interface GitCommit {
+  hash: string;
+  shortHash: string;
+  subject: string;
+  author: string;
+  relativeDate: string;
+}
+
+export interface GitStatus {
+  isGitRepo: boolean;
+  branch: string | null;
+  remoteBranch: string | null;
+  ahead: number;
+  behind: number;
+  staged: GitFile[];
+  unstaged: GitFile[];
+  untracked: GitFile[];
+  commits: GitCommit[];
+  stashCount: number;
+  workspacePath: string;
+  stagedCount: number;
+  unstagedCount: number;
+}
+
 export interface ChatMessage {
   role: 'user' | 'agent';
   content: string;
