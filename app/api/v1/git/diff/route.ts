@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execSync } from 'child_process';
-import { existsSync } from 'fs';
+import { execFileSync } from 'child_process';
+import { existsSync, readFileSync } from 'fs';
+import { join, normalize, resolve } from 'path';
 import ctx from '@/lib/context';
 import { getRecentProjects } from '@/lib/cdp/recent-projects';
 
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
  * GET /api/v1/git/diff?filepath=…&staged=true|false
  *
  * Returns git diff for a specific file in the active IDE workspace.
- * staged=true for index diff, staged=false (default) for working tree diff.
+ * Cross-platform: uses execFileSync with arg arrays (no shell quoting).
  */
 export async function GET(request: NextRequest) {
   const filepath = request.nextUrl.searchParams.get('filepath');
@@ -21,7 +22,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Missing filepath parameter' }, { status: 400 });
   }
 
-  if (filepath.includes('..')) {
+  // Security: reject path traversal
+  const normalized = normalize(filepath);
+  if (normalized.includes('..')) {
     return NextResponse.json({ error: 'Invalid path' }, { status: 403 });
   }
 
@@ -30,43 +33,53 @@ export async function GET(request: NextRequest) {
 
   let gitRoot: string;
   try {
-    gitRoot = execSync('git rev-parse --show-toplevel', { cwd, encoding: 'utf-8' }).trim();
+    gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd,
+      encoding: 'utf-8',
+    }).trim();
   } catch {
     return NextResponse.json({ error: 'Not a git repository' }, { status: 404 });
   }
 
-  const escapedPath = filepath.replace(/"/g, '\\"');
   const maxBuffer = 5 * 1024 * 1024;
+  const opts = { cwd: gitRoot, encoding: 'utf-8' as const, maxBuffer } as any;
+
+  // Forward-slash path for git (git always uses / even on Windows)
+  const gitFilepath = filepath.replace(/\\/g, '/');
 
   try {
     let diff = '';
 
     if (untracked) {
       // Untracked file: show as new file diff by reading content
-      const fullPath = `${gitRoot}/${filepath}`;
+      const fullPath = join(gitRoot, normalize(filepath));
+      // Verify path stays within git root
+      if (!resolve(fullPath).toLowerCase().startsWith(resolve(gitRoot).toLowerCase())) {
+        return NextResponse.json({ error: 'Path traversal denied' }, { status: 403 });
+      }
       if (existsSync(fullPath)) {
-        const { readFileSync } = await import('fs');
         const content = readFileSync(fullPath, 'utf-8');
         const lines = content.split('\n');
         const diffLines = [
-          `diff --git a/${filepath} b/${filepath}`,
+          `diff --git a/${gitFilepath} b/${gitFilepath}`,
           'new file mode 100644',
           '--- /dev/null',
-          `+++ b/${filepath}`,
+          `+++ b/${gitFilepath}`,
           `@@ -0,0 +1,${lines.length} @@`,
           ...lines.map(l => `+${l}`),
         ];
         diff = diffLines.join('\n');
       }
     } else if (staged) {
-      diff = execSync(`git diff --cached -- "${escapedPath}"`, { cwd: gitRoot, encoding: 'utf-8', maxBuffer });
+      // Pass filepath as a separate arg — no shell quoting needed
+      diff = execFileSync('git', ['diff', '--cached', '--', gitFilepath], opts);
     } else {
-      diff = execSync(`git diff -- "${escapedPath}"`, { cwd: gitRoot, encoding: 'utf-8', maxBuffer });
+      diff = execFileSync('git', ['diff', '--', gitFilepath], opts);
     }
 
     return NextResponse.json({ diff: diff.trim(), filepath });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err.stderr?.toString?.().trim() || err.message }, { status: 500 });
   }
 }
 
@@ -78,8 +91,8 @@ function resolveIdeWorkspacePath(): string | null {
     if (!title) return null;
     const projectName = title.split(' - ')[0]?.trim();
     if (!projectName) return null;
-    const recentProjects = getRecentProjects(30);
-    const match = recentProjects.find(p => p.name === projectName);
+    const projects = getRecentProjects(30);
+    const match = projects.find(p => p.name === projectName);
     if (match && existsSync(match.path)) return match.path;
     return null;
   } catch {

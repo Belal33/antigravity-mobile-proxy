@@ -2709,3 +2709,598 @@ html, body {
 }
 
 
+
+/* ══════════════════════════════════════════════
+   WORKSPACE PANEL STYLES
+   ══════════════════════════════════════════════ */
+
+/* ── Workspace Toggle Button (Input Toolbar) ── */
+.workspace-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-smooth);
+  flex-shrink: 0;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 32px;
+}
+.workspace-toggle-btn:hover {
+  border-color: var(--border-active);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.workspace-toggle-btn:active { transform: scale(0.95); }
+.workspace-toggle-btn.active {
+  border-color: rgba(96, 165, 250, 0.5);
+  background: rgba(96, 165, 250, 0.1);
+  color: #60a5fa;
+}
+.workspace-toggle-btn.active:hover {
+  border-color: rgba(96, 165, 250, 0.7);
+  background: rgba(96, 165, 250, 0.18);
+  color: #93c5fd;
+}
+
+/* ── Workspace Panel Container ── */
+.workspace-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-primary);
+  z-index: 154;
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.workspace-panel.open { transform: translateX(0); }
+
+/* ── Workspace Panel Header ── */
+.workspace-panel-header {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+.workspace-panel-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px 8px;
+}
+.workspace-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+.workspace-path-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px 10px;
+  color: var(--text-muted);
+}
+.workspace-path-text {
+  font-size: 10px;
+  font-family: var(--font-jetbrains), monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+/* ── Search Bar ── */
+.workspace-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-tertiary);
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+.workspace-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text-primary);
+  caret-color: var(--accent-primary);
+}
+.workspace-search-input::placeholder { color: var(--text-muted); }
+.workspace-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+.workspace-search-clear:hover { background: var(--bg-hover); color: var(--text-secondary); }
+
+/* ── File Tree ── */
+.workspace-tree {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 0 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+.workspace-tree::-webkit-scrollbar { width: 4px; }
+.workspace-tree::-webkit-scrollbar-track { background: transparent; }
+.workspace-tree::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 4px; }
+
+.workspace-root-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 4px;
+}
+.workspace-root-icon { font-size: 14px; }
+.workspace-root-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.workspace-tree-list { display: flex; flex-direction: column; }
+
+.workspace-tree-node {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-right: 12px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  -webkit-tap-highlight-color: transparent;
+  color: var(--text-secondary);
+  min-height: 32px;
+}
+.workspace-tree-node:hover { background: var(--bg-hover); color: var(--text-primary); }
+.workspace-tree-node:active { background: rgba(255, 255, 255, 0.04); }
+.workspace-tree-node.highlighted {
+  background: rgba(96, 165, 250, 0.08);
+  color: #93c5fd;
+}
+.workspace-tree-node.is-dir { color: var(--text-primary); font-weight: 500; }
+.workspace-tree-node.is-file { font-size: 12.5px; }
+
+.workspace-arrow {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+  transform: rotate(-90deg);
+}
+.workspace-arrow.open { transform: rotate(0deg); }
+.workspace-arrow-spacer { display: inline-block; width: 10px; flex-shrink: 0; }
+
+.workspace-node-icon { font-size: 13px; flex-shrink: 0; line-height: 1; }
+.workspace-node-name {
+  flex: 1;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-node-size {
+  font-size: 9px;
+  font-family: var(--font-jetbrains), monospace;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.workspace-node-count {
+  font-size: 9px;
+  font-family: var(--font-jetbrains), monospace;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 99px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
+
+.workspace-tree-children { display: flex; flex-direction: column; }
+
+.workspace-empty-dir {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+/* ── Copy Toast ── */
+.workspace-copy-toast {
+  position: absolute;
+  top: 60px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(52, 211, 153, 0.15);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  border-radius: 6px;
+  color: #34d399;
+  font-size: 11px;
+  font-weight: 500;
+  z-index: 10;
+  animation: workspace-toast-in 0.2s ease forwards, workspace-toast-out 0.2s ease 1.6s forwards;
+  pointer-events: none;
+}
+@keyframes workspace-toast-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes workspace-toast-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* ── Desktop: workspace panel as side drawer ── */
+@media (min-width: 768px) {
+  .workspace-panel {
+    width: 360px;
+    box-shadow: -4px 0 32px rgba(0, 0, 0, 0.5);
+    border-left: 1px solid var(--border-subtle);
+  }
+}
+
+/* ── Workspace File Viewer ── */
+.workspace-file-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.workspace-viewer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.workspace-viewer-back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.workspace-viewer-back:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-active);
+}
+
+.workspace-viewer-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.workspace-viewer-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-viewer-lang {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 99px;
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  color: #60a5fa;
+  font-family: var(--font-jetbrains), monospace;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.workspace-viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.workspace-viewer-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+.workspace-viewer-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-active);
+}
+
+.workspace-viewer-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 12px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-tertiary);
+  flex-shrink: 0;
+}
+.workspace-viewer-path {
+  font-size: 10px;
+  font-family: var(--font-jetbrains), monospace;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.workspace-viewer-stats {
+  font-size: 10px;
+  font-family: var(--font-jetbrains), monospace;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.workspace-viewer-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-viewer-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 20px;
+  text-align: center;
+  flex: 1;
+  color: var(--text-muted);
+}
+.workspace-viewer-error svg { opacity: 0.4; color: var(--error); }
+.workspace-viewer-error p { font-size: 13px; color: var(--text-secondary); font-weight: 500; margin: 0; }
+.workspace-viewer-error span { font-size: 11px; }
+
+/* ── Code scroll area ── */
+.workspace-code-scroll {
+  flex: 1;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+.workspace-code-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
+.workspace-code-scroll::-webkit-scrollbar-track { background: transparent; }
+.workspace-code-scroll::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 4px; }
+
+.workspace-code-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-jetbrains), monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.workspace-code-row:hover { background: rgba(255, 255, 255, 0.02); }
+.workspace-line-num {
+  text-align: right;
+  padding: 0 12px 0 10px;
+  color: var(--text-muted);
+  user-select: none;
+  min-width: 36px;
+  width: 36px;
+  border-right: 1px solid var(--border-subtle);
+  vertical-align: top;
+  font-size: 11px;
+  opacity: 0.5;
+  white-space: nowrap;
+}
+.workspace-line-code {
+  padding: 0 16px 0 12px;
+  color: var(--text-primary);
+  white-space: pre;
+  vertical-align: top;
+}
+
+/* Selected file in tree */
+.workspace-tree-node.selected {
+  background: rgba(96, 165, 250, 0.1);
+  color: #93c5fd;
+}
+
+/* ══════════════════════════════════════════════
+   GIT COMMIT / PUSH BAR
+   ══════════════════════════════════════════════ */
+
+.git-commit-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(251, 146, 60, 0.03);
+  flex-shrink: 0;
+}
+
+.git-commit-input-row {
+  width: 100%;
+}
+
+.git-commit-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 7px 10px;
+  resize: none;
+  outline: none;
+  transition: border-color var(--transition-fast);
+  line-height: 1.5;
+}
+.git-commit-textarea::placeholder { color: var(--text-muted); }
+.git-commit-textarea:focus { border-color: rgba(251, 146, 60, 0.5); }
+.git-commit-textarea:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.git-commit-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.git-commit-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  justify-content: center;
+  padding: 7px 10px;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  border-radius: var(--radius-sm);
+  background: rgba(52, 211, 153, 0.08);
+  color: #34d399;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+  min-height: 34px;
+  white-space: nowrap;
+}
+.git-commit-btn:hover:not(:disabled) {
+  background: rgba(52, 211, 153, 0.15);
+  border-color: rgba(52, 211, 153, 0.6);
+  color: #6ee7b7;
+  transform: translateY(-1px);
+}
+.git-commit-btn:active:not(:disabled) { transform: scale(0.97); }
+.git-commit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.git-push-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  justify-content: center;
+  padding: 7px 10px;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  border-radius: var(--radius-sm);
+  background: rgba(96, 165, 250, 0.08);
+  color: #60a5fa;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+  min-height: 34px;
+  white-space: nowrap;
+}
+.git-push-btn:hover:not(:disabled) {
+  background: rgba(96, 165, 250, 0.15);
+  border-color: rgba(96, 165, 250, 0.6);
+  color: #93c5fd;
+  transform: translateY(-1px);
+}
+.git-push-btn:active:not(:disabled) { transform: scale(0.97); }
+.git-push-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.git-action-feedback {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  animation: feedback-in 0.2s ease;
+}
+@keyframes feedback-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.git-action-feedback--success {
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.25);
+  color: #34d399;
+}
+.git-action-feedback--error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}

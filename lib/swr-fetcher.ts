@@ -19,6 +19,7 @@ export const SWR_KEYS = {
   artifacts: `${API_BASE}/artifacts/active`,
   changes: `${API_BASE}/changes/active`,
   git: `${API_BASE}/git/status`,
+  workspace: `${API_BASE}/workspace/files`,
   history: `${API_BASE}/chat/history`,
   mode: `${API_BASE}/chat/mode`,
   agent: `${API_BASE}/chat/agent`,

@@ -75,6 +75,64 @@ export default function GitPanel({ open, onClose, gitStatus, onRefresh }: GitPan
   const [diffLoading, setDiffLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  // ── Commit / Push state ──
+  const [commitMsg, setCommitMsg] = useState('');
+  const [isCommitting, setIsCommitting] = useState(false);
+  const [isPushing, setIsPushing] = useState(false);
+  const [gitActionFeedback, setGitActionFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const showFeedback = (text: string, type: 'success' | 'error') => {
+    setGitActionFeedback({ text, type });
+    setTimeout(() => setGitActionFeedback(null), 4000);
+  };
+
+  const handleCommit = async () => {
+    if (!commitMsg.trim() || isCommitting) return;
+    setIsCommitting(true);
+    try {
+      const res = await fetch('/api/v1/git/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: commitMsg.trim(), stageAll: true }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCommitMsg('');
+        showFeedback('Committed successfully', 'success');
+        onRefresh();
+      } else {
+        showFeedback(data.error || 'Commit failed', 'error');
+      }
+    } catch (e: any) {
+      showFeedback(`Error: ${e.message}`, 'error');
+    } finally {
+      setIsCommitting(false);
+    }
+  };
+
+  const handlePush = async () => {
+    if (isPushing) return;
+    setIsPushing(true);
+    try {
+      const res = await fetch('/api/v1/git/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showFeedback(`Pushed to origin`, 'success');
+        onRefresh();
+      } else {
+        showFeedback(data.error || 'Push failed', 'error');
+      }
+    } catch (e: any) {
+      showFeedback(`Error: ${e.message}`, 'error');
+    } finally {
+      setIsPushing(false);
+    }
+  };
+
   const openDiff = async (file: GitFile, staged: boolean) => {
     setDiffLoading(true);
     setDiffFile({ path: file.path, staged, untracked: file.status === 'untracked' });
@@ -205,6 +263,78 @@ export default function GitPanel({ open, onClose, gitStatus, onRefresh }: GitPan
           </div>
         )}
       </div>
+
+      {/* ── Commit + Push bar ── */}
+      {gitStatus?.isGitRepo && !diffFile && (
+        <div className="git-commit-bar">
+          <div className="git-commit-input-row">
+            <textarea
+              className="git-commit-textarea"
+              placeholder="Commit message…"
+              value={commitMsg}
+              onChange={e => setCommitMsg(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  handleCommit();
+                }
+              }}
+              rows={2}
+              disabled={isCommitting}
+            />
+          </div>
+          <div className="git-commit-actions">
+            <button
+              className="git-commit-btn"
+              onClick={handleCommit}
+              disabled={!commitMsg.trim() || isCommitting}
+              title="Stage all & commit (Ctrl+Enter)"
+            >
+              {isCommitting ? (
+                <span className="wm-spinner" />
+              ) : (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M12 2v7M12 15v7M2 12h7M15 12h7" />
+                </svg>
+              )}
+              {isCommitting ? 'Committing…' : 'Commit All'}
+            </button>
+            <button
+              className="git-push-btn"
+              onClick={handlePush}
+              disabled={isPushing || !gitStatus?.branch}
+              title={gitStatus?.ahead > 0 ? `Push ${gitStatus.ahead} commit(s)` : 'Push to remote'}
+            >
+              {isPushing ? (
+                <span className="wm-spinner" />
+              ) : (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="12" y1="19" x2="12" y2="5" />
+                  <polyline points="5 12 12 5 19 12" />
+                </svg>
+              )}
+              {isPushing ? 'Pushing…' : gitStatus?.ahead > 0 ? `Push (${gitStatus.ahead})` : 'Push'}
+            </button>
+          </div>
+          {gitActionFeedback && (
+            <div className={`git-action-feedback git-action-feedback--${gitActionFeedback.type}`}>
+              {gitActionFeedback.type === 'success' ? (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+              )}
+              <span>{gitActionFeedback.text}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Non-git repo */}
       {gitStatus && !gitStatus.isGitRepo && (

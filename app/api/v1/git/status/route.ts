@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { existsSync } from 'fs';
 import ctx from '@/lib/context';
 import { getRecentProjects } from '@/lib/cdp/recent-projects';
@@ -26,7 +26,7 @@ export async function GET() {
     // Verify it's a git repo
     let gitRoot: string;
     try {
-      gitRoot = execSync('git rev-parse --show-toplevel', { cwd, encoding: 'utf-8' }).trim();
+      gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf-8' }).trim();
     } catch {
       return NextResponse.json({
         isGitRepo: false,
@@ -45,7 +45,7 @@ export async function GET() {
     // Branch name
     let branch = 'HEAD';
     try {
-      branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: gitRoot, encoding: 'utf-8' }).trim();
+      branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: gitRoot, encoding: 'utf-8' }).trim();
     } catch { /* detached HEAD */ }
 
     // Ahead/behind tracking remote
@@ -53,8 +53,8 @@ export async function GET() {
     let behind = 0;
     let remoteBranch: string | null = null;
     try {
-      remoteBranch = execSync(`git rev-parse --abbrev-ref --symbolic-full-name @{u}`, { cwd: gitRoot, encoding: 'utf-8' }).trim();
-      const ab = execSync(`git rev-list --left-right --count HEAD...${remoteBranch}`, { cwd: gitRoot, encoding: 'utf-8' }).trim();
+      remoteBranch = execFileSync('git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], { cwd: gitRoot, encoding: 'utf-8' }).trim();
+      const ab = execFileSync('git', ['rev-list', '--left-right', '--count', `HEAD...${remoteBranch}`], { cwd: gitRoot, encoding: 'utf-8' }).trim();
       const [a, b] = ab.split('\t').map(Number);
       ahead = a || 0;
       behind = b || 0;
@@ -63,7 +63,7 @@ export async function GET() {
     // Parse `git status --porcelain=v1`
     let statusOutput = '';
     try {
-      statusOutput = execSync('git status --porcelain=v1 -u', { cwd: gitRoot, encoding: 'utf-8', maxBuffer: 2 * 1024 * 1024 });
+      statusOutput = execFileSync('git', ['status', '--porcelain=v1', '-u'], { cwd: gitRoot, encoding: 'utf-8', maxBuffer: 2 * 1024 * 1024 } as any);
     } catch { /* ignore */ }
 
     type GitFileStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'copied' | 'untracked' | 'unmerged';
@@ -128,9 +128,9 @@ export async function GET() {
     // Last 10 commits
     let commits: { hash: string; shortHash: string; subject: string; author: string; relativeDate: string }[] = [];
     try {
-      const logOutput = execSync(
-        'git log -10 --pretty=format:"%H|%h|%s|%an|%cr"',
-        { cwd: gitRoot, encoding: 'utf-8', maxBuffer: 1024 * 1024 }
+      const logOutput = execFileSync(
+        'git', ['log', '-10', '--pretty=format:%H|%h|%s|%an|%cr'],
+        { cwd: gitRoot, encoding: 'utf-8', maxBuffer: 1024 * 1024 } as any
       );
       commits = logOutput.split('\n').filter(Boolean).map(line => {
         const [hash, shortHash, subject, author, relativeDate] = line.split('|');
@@ -141,7 +141,7 @@ export async function GET() {
     // Stash count
     let stashCount = 0;
     try {
-      const stashList = execSync('git stash list', { cwd: gitRoot, encoding: 'utf-8' });
+      const stashList = execFileSync('git', ['stash', 'list'], { cwd: gitRoot, encoding: 'utf-8' } as any);
       stashCount = stashList.trim() ? stashList.trim().split('\n').length : 0;
     } catch { /* ignore */ }
 

@@ -6,6 +6,7 @@ import { useConversations } from './use-conversations';
 import { useArtifacts } from './use-artifacts';
 import { useChanges } from './use-changes';
 import { useGit } from './use-git';
+import { useWorkspace } from './use-workspace';
 import { useMonitor } from './use-monitor';
 import type { ChatMessage, SSEStep } from '@/lib/types';
 import { fetcher, SWR_KEYS } from '@/lib/swr-fetcher';
@@ -157,6 +158,14 @@ export function useChat() {
     toggleGitPanel,
     refreshGit,
   } = useGit();
+
+  const {
+    workspaceTree,
+    workspacePanelOpen,
+    workspaceLoading,
+    toggleWorkspacePanel,
+    refreshWorkspace,
+  } = useWorkspace();
 
   // Refresh artifact and changes data when a conversation switch completes
   // (but don't auto-open the panel — let the user decide)
@@ -536,6 +545,7 @@ export function useChat() {
     conversations, activeConversation, artifactFiles, artifactPanelOpen,
     changeFiles, changesPanelOpen, acceptAllChanges, rejectAllChanges, isAccepting, isRejecting,
     gitStatus, gitPanelOpen, gitChangedCount, toggleGitPanel, refreshGit,
+    workspaceTree, workspacePanelOpen, workspaceLoading, toggleWorkspacePanel, refreshWorkspace,
     currentMode, currentAgent, agents, isLoadingAgents,
     cdpStatus, recentProjects,
     isAgentBusy, isMonitorConnected,

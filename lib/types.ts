@@ -166,6 +166,23 @@ export interface GitCommit {
   relativeDate: string;
 }
 
+// ── Workspace File Tree ──
+
+export interface WorkspaceNode {
+  name: string;
+  path: string;       // relative to workspace root
+  type: 'file' | 'dir';
+  children?: WorkspaceNode[];
+  size?: number;
+  ext?: string;
+}
+
+export interface WorkspaceTree {
+  workspacePath: string;
+  rootLabel: string;
+  tree: WorkspaceNode[];
+}
+
 export interface GitStatus {
   isGitRepo: boolean;
   branch: string | null;

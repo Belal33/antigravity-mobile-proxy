@@ -28,6 +28,8 @@ interface ChatInputProps {
   onToggleGit: () => void;
   gitChangedCount: number;
   gitPanelOpen: boolean;
+  onToggleWorkspace: () => void;
+  workspacePanelOpen: boolean;
 }
 
 export default function ChatInput({
@@ -36,6 +38,7 @@ export default function ChatInput({
   onToggleArtifacts, artifactCount, artifactPanelOpen,
   onToggleChanges, changesCount, changesPanelOpen,
   onToggleGit, gitChangedCount, gitPanelOpen,
+  onToggleWorkspace, workspacePanelOpen,
 }: ChatInputProps) {
   const [value, setValue] = useState('');
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
@@ -246,6 +249,20 @@ export default function ChatInput({
           {gitChangedCount > 0 && (
             <span className="git-badge">{gitChangedCount}</span>
           )}
+        </button>
+
+        {/* Workspace Panel Toggle */}
+        <button
+          className={`workspace-toggle-btn ${workspacePanelOpen ? 'active' : ''}`}
+          onClick={onToggleWorkspace}
+          title="Working Directory"
+          aria-label="Toggle working directory panel"
+          type="button"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+          </svg>
+          Dir
         </button>
 
         <span className="toolbar-agent-name" id="model-info">{currentAgent || ''}</span>

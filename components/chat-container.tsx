@@ -8,6 +8,7 @@ import ChatInput from '@/components/chat-input';
 import ArtifactPanel from '@/components/artifact-panel';
 import ChangesPanel from '@/components/changes-panel';
 import GitPanel from '@/components/git-panel';
+import WorkspacePanel from '@/components/workspace-panel';
 import NetworkBanner from '@/components/network-banner';
 import { useEffect, useCallback } from 'react';
 
@@ -28,6 +29,7 @@ export default function ChatContainer() {
     toggleChangesPanel, changeFiles, changesPanelOpen,
     acceptAllChanges, rejectAllChanges, isAccepting, isRejecting,
     gitStatus, gitPanelOpen, gitChangedCount, toggleGitPanel, refreshGit,
+    workspaceTree, workspacePanelOpen, workspaceLoading, toggleWorkspacePanel, refreshWorkspace,
     messagesEndRef,
   } = chat;
 
@@ -134,6 +136,8 @@ export default function ChatContainer() {
         onToggleGit={toggleGitPanel}
         gitChangedCount={gitChangedCount}
         gitPanelOpen={gitPanelOpen}
+        onToggleWorkspace={toggleWorkspacePanel}
+        workspacePanelOpen={workspacePanelOpen}
       />
 
       <ArtifactPanel
@@ -158,6 +162,14 @@ export default function ChatContainer() {
         onClose={toggleGitPanel}
         gitStatus={gitStatus}
         onRefresh={refreshGit}
+      />
+
+      <WorkspacePanel
+        open={workspacePanelOpen}
+        onClose={toggleWorkspacePanel}
+        workspaceTree={workspaceTree}
+        workspaceLoading={workspaceLoading}
+        onRefresh={refreshWorkspace}
       />
     </div>
   );
