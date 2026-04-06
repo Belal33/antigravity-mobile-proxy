@@ -58,7 +58,7 @@ export default function ChatInput({
       onStop();
       return;
     }
-    if (e.key === 'Enter' && (!e.shiftKey || e.ctrlKey || e.metaKey)) {
+    if (e.key === 'Enter' && (e.shiftKey || e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       if (value.trim()) {
         // Works in both idle and streaming states — sendMessage handles interruption
@@ -265,7 +265,6 @@ export default function ChatInput({
           Dir
         </button>
 
-        <span className="toolbar-agent-name" id="model-info">{currentAgent || ''}</span>
       </div>
 
       {/* Text input row — textarea + send */}
@@ -278,33 +277,32 @@ export default function ChatInput({
           placeholder="Ask the Antigravity agent..."
           rows={1}
           aria-label="Chat message input"
-          enterKeyHint="send"
+          enterKeyHint="enter"
           autoComplete="off"
         />
 
         <button
-          className={`send-btn${
-            isStreaming && value.trim()
+          className={`send-btn${isStreaming && value.trim()
               ? ' send-btn--interrupt'
               : isStreaming
-              ? ' send-btn--stop'
-              : ''
-          }`}
+                ? ' send-btn--stop'
+                : ''
+            }`}
           onClick={handleSend}
           disabled={!isStreaming && !value.trim()}
           aria-label={
             isStreaming && value.trim()
               ? 'Interrupt and send new message'
               : isStreaming
-              ? 'Stop generation'
-              : 'Send message'
+                ? 'Stop generation'
+                : 'Send message'
           }
           title={
             isStreaming && value.trim()
               ? 'Interrupt agent and send new message'
               : isStreaming
-              ? 'Stop generation (Esc)'
-              : 'Send message'
+                ? 'Stop generation (Esc)'
+                : 'Send message'
           }
         >
           {isStreaming && !value.trim() ? (
@@ -322,7 +320,7 @@ export default function ChatInput({
         </button>
       </div>
       <div className="input-hint">
-        <span>Enter to send · Shift+Enter for new line · Ctrl+N for new chat · Esc to stop</span>
+        <span>Shift+Enter to send · Enter for new line · Ctrl+N for new chat · Esc to stop</span>
       </div>
     </footer>
   );

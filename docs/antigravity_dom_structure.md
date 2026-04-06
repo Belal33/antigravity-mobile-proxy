@@ -30,21 +30,37 @@ Each turn represents one back-and-forth interaction (prompt + agent execution). 
 ```
 
 ## Tool Action Cards (Execution, Viewing, Editing)
-Regular tool executions (file reads, commands, searches) use a consistent `.flex` container structure that can be easily parsed.
+Depending on the tool type, Antigravity uses two distinct DOM structures for tool calls: Container Tools (for standard long-running commands like bash/terminals) and Toggle Button Tools (for quick synchronous file system actions like edits).
 
-**Selector:** `.flex.flex-col.space-y-2 > .flex.flex-row:not(.my-2)`
+### 1. Container Tools (Commands & Search)
+Regular tool executions with terminal output use a consistent `.flex` container structure.
+
+**Selector:** `.flex.flex-col.gap-2.border.rounded-lg.my-1`
 
 ```css
-.flex.flex-col.space-y-2 > .flex.flex-row:not(.my-2)
-└── div
-    ├── button (Expand/Collapse accordion)
-    ├── .grow.min-w-0
-    │   ├── .text-xs (Tool Status e.g., "Ran background command")
-    │   └── .opacity-60 (Tool target e.g., "ls -al")
-    └── .flex.items-center.gap-1.opacity-0.group-hover:opacity-100
-        └── div[role="button"] (Cancel/Interrupt button, if active)
+.flex.flex-col.gap-2.border.rounded-lg.my-1
+├── .mb-1.px-2.py-1.text-sm (Header)
+│   ├── .opacity-60 (Tool Status / Exit code)
+│   └── span.font-mono.text-sm (Command/Path)
+└── .component-shared-terminal
+    └── .terminal.xterm (Canvas-rendered Xterm instance)
 ```
-*Note: We inject a custom `data-proxy-tool-id` attribute on these row elements to track state continuity across SSE chunks because the IDE employs virtualization.*
+
+### 2. Toggle Button Tools (Files & MCP)
+File edits, creations, and rapid reads are grouped into collapsible accordions rendering as a button. The actual file name, diff size (`+1`, `-0`), and the "undo" functionality exist on the parent wrapper element, NOT inside the button itself.
+
+**Selector:** `.flex.flex-col.space-y-2 > .flex.flex-row:not(.my-2), button.group.flex.items-center.gap-1.w-full.text-left`
+
+```css
+div (Parent Wrapper)
+├── button.group.flex.items-center...text-left
+│   └── span.opacity-70 ("Edited 1 file", "Worked for 1m")
+└── div.hidden / visible (Accordion Content)
+    ├── span.inline-flex.items-center (File Icon + "filename.ts")
+    ├── span.text-green ("+12")
+    └── span.text-red ("-4")
+```
+*Note: We inject a custom `data-proxy-tool-id` attribute on these row/parent elements to track state continuity across SSE chunks because the IDE employs virtualization.*
 
 ## Permission Dialogs (HITL)
 When the framework needs Human-in-the-Loop (HITL) permission for a sensitive action, it DOES NOT use the standard Tool Action Card structure. It floats the dialog anywhere in the turn, often outside the `space-y-2` layout.

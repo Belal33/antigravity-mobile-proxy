@@ -438,7 +438,7 @@ export async function getFullAgentState(ctx: ProxyContext): Promise<AgentState> 
 
     // ── 4b. Inline file-system tools ──
     const fileToolRows = scopeEl.querySelectorAll(
-      '.flex.flex-col.space-y-2 > .flex.flex-row:not(.my-2)'
+      '.flex.flex-col.space-y-2 > .flex.flex-row:not(.my-2), button.group.flex.items-center.gap-1.w-full.text-left'
     );
     const statusPattern =
       /^(Edited|Created|Analyzed|Read|Viewed|Wrote|Replaced|Searching|Deleted|Moved|Renamed|MCP Tool)/i;
@@ -455,7 +455,8 @@ export async function getFullAgentState(ctx: ProxyContext): Promise<AgentState> 
         }
         const proxyToolId = rowEl.dataset.proxyToolId;
 
-        const allSpans = Array.from(rowEl.querySelectorAll('span'));
+        const targetContainer = rowEl.tagName === 'BUTTON' ? rowEl.parentElement || rowEl : rowEl;
+        const allSpans = Array.from(targetContainer.querySelectorAll('span'));
         let fileName = '';
         let additions: string | null = null;
         let deletions: string | null = null;
