@@ -110,17 +110,21 @@ export default function Header({
     <header className="header">
       <div className="header-left">
         <div className="logo">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="url(#header-gradient)" strokeWidth="1.5">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="url(#hg)" strokeWidth="1.5">
             <defs>
-              <linearGradient id="header-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" style={{ stopColor: '#6366f1' }} />
-                <stop offset="100%" style={{ stopColor: '#a855f7' }} />
+              <linearGradient id="hg" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#6366f1" />
+                <stop offset="100%" stopColor="#a855f7" />
               </linearGradient>
             </defs>
             <circle cx="12" cy="12" r="10" />
             <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
             <line x1="2" y1="12" x2="22" y2="12" />
           </svg>
+        </div>
+        <div className="header-brand">
+          <div className="header-title"><h1>Antigravity</h1></div>
+          <div className={`header-subtitle status-${statusState}`}>{statusText}</div>
         </div>
       </div>
       <div className="header-right">
