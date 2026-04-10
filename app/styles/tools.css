@@ -1,0 +1,99 @@
+/* ══════════════════════════════════════════════
+   TOOL CALL CARDS — Clean left-border style
+   ══════════════════════════════════════════════ */
+
+.tool-call-card {
+  border: 1px solid var(--border-1);
+  background: rgba(255, 255, 255, 0.015);
+  border-radius: var(--radius-sm);
+  padding: 10px 10px;
+  font-size: 12px;
+  transition: all var(--transition-fast);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.tool-call-card.running {
+  border-color: rgba(99, 102, 241, 0.3);
+  background: rgba(99, 102, 241, 0.04);
+  border-left: 2px solid var(--accent);
+}
+.tool-call-card.error {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.04);
+}
+.tool-call-card.mcp {
+  border-color: rgba(168, 85, 247, 0.3);
+  background: rgba(168, 85, 247, 0.04);
+}
+.tool-header { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tool-icon { display: flex; align-items: center; color: var(--text-3); flex-shrink: 0; }
+.tool-status-text { font-weight: 500; color: var(--text-1); }
+.tool-path {
+  font-family: var(--font-jetbrains), monospace;
+  font-size: 10px;
+  color: var(--accent);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-basis: 100%;
+  order: 3;
+}
+.tool-command {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-top: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.tool-command code {
+  font-family: var(--font-jetbrains), monospace;
+  font-size: 11px;
+  color: var(--text-1);
+  white-space: nowrap;
+}
+.tool-exit-code { font-size: 10px; color: var(--text-3); margin-top: 4px; }
+.tool-footer-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.tool-footer-btn {
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border-1);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  min-height: 36px;
+  -webkit-tap-highlight-color: transparent;
+}
+.tool-footer-btn:hover { border-color: var(--accent); color: var(--text-1); }
+.tool-footer-btn:active { transform: scale(0.96); }
+.tool-file-changes { display: flex; gap: 6px; font-size: 10px; margin-top: 2px; }
+.tool-additions { color: var(--success); font-family: var(--font-jetbrains), monospace; }
+.tool-deletions { color: var(--error); font-family: var(--font-jetbrains), monospace; }
+.tool-terminal {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  padding: 8px;
+  margin-top: 6px;
+  max-height: 100px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  font-family: var(--font-jetbrains), monospace;
+  font-size: 10px;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ── Responsive ── */
+@media (min-width: 480px) {
+  .tool-path { flex-basis: auto; order: 0; max-width: 180px; margin-left: auto; }
+}
+@media (min-width: 768px) {
+  .tool-terminal { max-height: 120px; font-size: 11px; }
+  .tool-command code { font-size: 11px; }
+  .tool-path { font-size: 11px; max-width: 200px; }
+}

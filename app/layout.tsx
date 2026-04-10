@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import PWAInstallPrompt from '@/components/pwa-install-prompt';
+import Providers from '@/components/providers';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,7 +47,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body>
-        {children}
+        <Providers>
+          {children}
+        </Providers>
         <PWAInstallPrompt />
       </body>
     </html>

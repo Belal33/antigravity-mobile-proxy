@@ -258,7 +258,6 @@ export default function ChatInput({
             <path d="M13 6h3a2 2 0 0 1 2 2v7" />
             <line x1="6" y1="9" x2="6" y2="21" />
           </svg>
-          Git
           {gitChangedCount > 0 && (
             <span className="git-badge">{gitChangedCount}</span>
           )}
@@ -275,7 +274,6 @@ export default function ChatInput({
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
           </svg>
-          Dir
         </button>
 
       </div>

@@ -2,6 +2,59 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import type { WorkspaceNode, WorkspaceTree } from '@/lib/types';
+import hljs from 'highlight.js/lib/core';
+import 'highlight.js/styles/github-dark.css';
+
+/* Register common languages — keeps bundle small */
+import javascript from 'highlight.js/lib/languages/javascript';
+import typescript from 'highlight.js/lib/languages/typescript';
+import xml from 'highlight.js/lib/languages/xml';
+import css from 'highlight.js/lib/languages/css';
+import json from 'highlight.js/lib/languages/json';
+import markdown from 'highlight.js/lib/languages/markdown';
+import python from 'highlight.js/lib/languages/python';
+import bash from 'highlight.js/lib/languages/bash';
+import yaml from 'highlight.js/lib/languages/yaml';
+import sql from 'highlight.js/lib/languages/sql';
+import go from 'highlight.js/lib/languages/go';
+import rust from 'highlight.js/lib/languages/rust';
+import diff from 'highlight.js/lib/languages/diff';
+
+hljs.registerLanguage('javascript', javascript);
+hljs.registerLanguage('typescript', typescript);
+hljs.registerLanguage('xml', xml);
+hljs.registerLanguage('css', css);
+hljs.registerLanguage('json', json);
+hljs.registerLanguage('markdown', markdown);
+hljs.registerLanguage('python', python);
+hljs.registerLanguage('bash', bash);
+hljs.registerLanguage('yaml', yaml);
+hljs.registerLanguage('sql', sql);
+hljs.registerLanguage('go', go);
+hljs.registerLanguage('rust', rust);
+hljs.registerLanguage('diff', diff);
+
+/* Map file extensions / API lang names to hljs language names */
+const LANG_MAP: Record<string, string> = {
+  ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
+  py: 'python', rb: 'ruby', rs: 'rust', go: 'go',
+  css: 'css', scss: 'css', sass: 'css',
+  html: 'xml', htm: 'xml', svg: 'xml', xml: 'xml',
+  json: 'json', yaml: 'yaml', yml: 'yaml', toml: 'yaml',
+  md: 'markdown', mdx: 'markdown',
+  sh: 'bash', bash: 'bash', zsh: 'bash',
+  sql: 'sql', graphql: 'graphql',
+  diff: 'diff', patch: 'diff',
+  typescript: 'typescript', javascript: 'javascript', python: 'python',
+};
+
+function resolveHljsLang(lang: string): string | undefined {
+  const l = lang.toLowerCase().replace(/^\./,'');
+  const mapped = LANG_MAP[l];
+  if (mapped && hljs.getLanguage(mapped)) return mapped;
+  if (hljs.getLanguage(l)) return l;
+  return undefined;
+}
 
 interface WorkspacePanelProps {
   open: boolean;
@@ -164,6 +217,26 @@ function addLineNumbers(code: string): { num: number; text: string }[] {
   return code.split('\n').map((text, i) => ({ num: i + 1, text }));
 }
 
+/** Highlight code and split into lines, returning HTML strings per line */
+function highlightCode(code: string, lang: string): { num: number; html: string }[] {
+  const hljsLang = resolveHljsLang(lang);
+  let highlighted: string;
+  try {
+    if (hljsLang) {
+      highlighted = hljs.highlight(code, { language: hljsLang }).value;
+    } else {
+      highlighted = hljs.highlightAuto(code).value;
+    }
+  } catch {
+    // Fallback to plain text
+    highlighted = code
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+  return highlighted.split('\n').map((html, i) => ({ num: i + 1, html }));
+}
+
 function FileViewer({ view, onClose, onCopyPath, workspacePath }: FileViewerProps) {
   const [copied, setCopied] = useState(false);
 
@@ -179,7 +252,10 @@ function FileViewer({ view, onClose, onCopyPath, workspacePath }: FileViewerProp
     onCopyPath(view.path);
   };
 
-  const lines = view.content ? addLineNumbers(view.content) : [];
+  const highlightedLines = useMemo(() => {
+    if (!view.content) return [];
+    return highlightCode(view.content, view.lang || '');
+  }, [view.content, view.lang]);
 
   return (
     <div className="workspace-file-viewer">
@@ -267,11 +343,11 @@ function FileViewer({ view, onClose, onCopyPath, workspacePath }: FileViewerProp
           <div className="workspace-code-scroll">
             <table className="workspace-code-table">
               <tbody>
-                {lines.map(({ num, text }) => (
+                {highlightedLines.map(({ num, html }) => (
                   <tr key={num} className="workspace-code-row">
                     <td className="workspace-line-num">{num}</td>
                     <td className="workspace-line-code">
-                      <span>{text || '\u00A0'}</span>
+                      <span dangerouslySetInnerHTML={{ __html: html || '\u00A0' }} />
                     </td>
                   </tr>
                 ))}

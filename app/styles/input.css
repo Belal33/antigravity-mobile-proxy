@@ -1,0 +1,360 @@
+/* ══════════════════════════════════════════════
+   INPUT AREA & TOOLBAR — Solid, no glassmorphism
+   ══════════════════════════════════════════════ */
+
+.input-area {
+  position: relative;
+  padding: 10px 10px;
+  padding-left: calc(10px + var(--safe-left));
+  padding-right: calc(10px + var(--safe-right));
+  padding-bottom: calc(10px + var(--safe-bottom));
+  border-top: 1px solid var(--border-1);
+  background: var(--surface-1);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.input-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  max-width: 100%;
+}
+.input-toolbar::-webkit-scrollbar { display: none; }
+.toolbar-agent-name {
+  font-size: 10px;
+  color: var(--text-3);
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 130px;
+  font-family: var(--font-jetbrains), monospace;
+  flex-shrink: 0;
+}
+.input-wrapper {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--surface-2);
+  border: 1.5px solid var(--border-2);
+  border-radius: var(--radius-lg);
+  padding: 8px 12px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.input-wrapper:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.06);
+}
+.input-wrapper textarea {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-1);
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  max-height: 130px;
+  min-height: 24px;
+}
+.input-wrapper textarea::placeholder { color: var(--text-3); font-size: 15px; }
+
+/* ── Send Button — solid accent, no glow ── */
+.send-btn {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+  transition: transform var(--transition-fast), opacity var(--transition-fast);
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.send-btn:disabled { opacity: 0.28; cursor: not-allowed; }
+.send-btn:not(:disabled):hover { transform: scale(1.06); background: var(--accent-hover); }
+.send-btn:not(:disabled):active { transform: scale(0.93); }
+
+/* Stop state */
+.send-btn--stop {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1.5px solid rgba(239, 68, 68, 0.5);
+  color: #f87171;
+}
+.send-btn--stop:not(:disabled):hover {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.7);
+  color: #fca5a5;
+  transform: scale(1.05);
+}
+.send-btn--stop:not(:disabled):active { transform: scale(0.92); }
+
+/* Interrupt state */
+.send-btn--interrupt {
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+}
+.send-btn--interrupt:not(:disabled):hover { transform: scale(1.05); }
+.send-btn--interrupt:not(:disabled):active { transform: scale(0.92); }
+
+.input-hint {
+  display: none;
+}
+
+/* ── Mode Toggle ── */
+.mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+  flex-shrink: 0;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 32px;
+}
+.mode-toggle:active { transform: scale(0.94); }
+.mode-toggle.planning { border-color: rgba(99, 102, 241, 0.3); background: rgba(99, 102, 241, 0.08); color: #a5b4fc; }
+.mode-toggle.fast { border-color: rgba(251, 191, 36, 0.3); background: rgba(251, 191, 36, 0.08); color: #fcd34d; }
+.mode-icon { display: flex; align-items: center; color: inherit; }
+.mode-label { font-weight: 500; letter-spacing: 0.02em; }
+
+/* ── Artifact Toggle ── */
+.artifact-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 7px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+  flex-shrink: 0;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 32px;
+  min-width: 32px;
+  justify-content: center;
+  position: relative;
+}
+.artifact-toggle-btn:hover { border-color: var(--border-focus); color: var(--text-1); }
+.artifact-toggle-btn:active { transform: scale(0.94); }
+.artifact-toggle-btn.active {
+  border-color: rgba(168, 85, 247, 0.35);
+  background: rgba(168, 85, 247, 0.08);
+  color: #c4b5fd;
+}
+.artifact-toggle-btn.active:hover {
+  border-color: rgba(168, 85, 247, 0.5);
+  background: rgba(168, 85, 247, 0.14);
+  color: #ddd6fe;
+}
+.artifact-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: rgba(168, 85, 247, 0.2);
+  color: #c4b5fd;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-jetbrains), monospace;
+  line-height: 1;
+}
+.artifact-toggle-btn.active .artifact-badge {
+  background: rgba(168, 85, 247, 0.3);
+  color: #e9d5ff;
+}
+
+/* ── Changes Toggle ── */
+.changes-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 7px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-full);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 32px;
+  min-width: 32px;
+  justify-content: center;
+  position: relative;
+}
+.changes-toggle-btn:hover { border-color: var(--border-focus); color: var(--text-1); }
+.changes-toggle-btn:active { transform: scale(0.95); }
+.changes-toggle-btn.active {
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.08);
+  color: #6ee7b7;
+}
+.changes-toggle-btn.active:hover {
+  border-color: rgba(52, 211, 153, 0.5);
+  background: rgba(52, 211, 153, 0.14);
+  color: #a7f3d0;
+}
+.changes-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: rgba(52, 211, 153, 0.2);
+  color: #6ee7b7;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-jetbrains), monospace;
+  line-height: 1;
+}
+.changes-toggle-btn.active .changes-badge {
+  background: rgba(52, 211, 153, 0.3);
+  color: #a7f3d0;
+}
+
+/* ── Git Toggle ── */
+.git-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 7px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-full);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 32px;
+  min-width: 32px;
+  justify-content: center;
+  position: relative;
+}
+.git-toggle-btn:hover { border-color: var(--border-focus); color: var(--text-1); }
+.git-toggle-btn:active { transform: scale(0.95); }
+.git-toggle-btn.active {
+  border-color: rgba(251, 146, 60, 0.4);
+  background: rgba(251, 146, 60, 0.08);
+  color: #fb923c;
+}
+.git-toggle-btn.active:hover {
+  border-color: rgba(251, 146, 60, 0.6);
+  background: rgba(251, 146, 60, 0.14);
+  color: #fdba74;
+}
+.git-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: rgba(251, 146, 60, 0.2);
+  color: #fb923c;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-jetbrains), monospace;
+  line-height: 1;
+}
+.git-toggle-btn.active .git-badge {
+  background: rgba(251, 146, 60, 0.3);
+  color: #fdba74;
+}
+
+/* ── Workspace Toggle ── */
+.workspace-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 7px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-full);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 32px;
+  min-width: 32px;
+  justify-content: center;
+}
+.workspace-toggle-btn:hover { border-color: var(--border-focus); color: var(--text-1); }
+.workspace-toggle-btn:active { transform: scale(0.95); }
+.workspace-toggle-btn.active {
+  border-color: rgba(96, 165, 250, 0.4);
+  background: rgba(96, 165, 250, 0.08);
+  color: #60a5fa;
+}
+.workspace-toggle-btn.active:hover {
+  border-color: rgba(96, 165, 250, 0.6);
+  background: rgba(96, 165, 250, 0.14);
+  color: #93c5fd;
+}
+
+/* ── Responsive ── */
+@media (min-width: 480px) {
+  .input-area { padding: 12px 12px; padding-bottom: calc(12px + var(--safe-bottom)); }
+  .input-wrapper { padding: 8px 12px; }
+}
+@media (min-width: 768px) {
+  .input-area { padding: 12px 16px; padding-bottom: calc(12px + var(--safe-bottom)); }
+  .input-wrapper textarea { font-size: 14px; max-height: 150px; }
+  .input-hint { display: flex; justify-content: space-between; padding: 6px 4px 0; font-size: 11px; color: var(--text-3); }
+  .mode-toggle { font-size: 12px; padding: 4px 10px; gap: 4px; }
+  .mode-icon { font-size: 13px; }
+}
+@media (min-width: 1024px) {
+  .mode-toggle:hover { border-color: var(--border-focus); color: var(--text-1); }
+  .mode-toggle.planning:hover { border-color: rgba(99, 102, 241, 0.4); background: rgba(99, 102, 241, 0.12); color: #c7d2fe; }
+  .mode-toggle.fast:hover { border-color: rgba(251, 191, 36, 0.4); background: rgba(251, 191, 36, 0.12); color: #fde68a; }
+}
