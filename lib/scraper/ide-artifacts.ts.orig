@@ -298,41 +298,50 @@ export async function getIdeArtifacts(ctx: ProxyContext): Promise<IdeArtifactRes
         if (text.includes('Artifact Name') && text.includes('Last Updated')) break;
       }
 
-      // Extract artifact rows using the new DOM grouping
-      // They are rendered as span elements with draggable="true" containing an svg and a span.select-text
-      const artifactSpans = section.querySelectorAll('span[draggable="true"]');
+      // Extract artifact rows
+      const rows = section.querySelectorAll('.flex.w-full.flex-row.items-center.justify-between');
       const artifacts: Array<{ name: string; lastUpdated: string | null }> = [];
 
-      if (artifactSpans.length > 0) {
-        for (const span of artifactSpans) {
-          const textSpan = span.querySelector('span.select-text');
-          const text = (textSpan?.textContent || span.textContent || '').trim();
-          if (!text) continue;
+      for (const row of rows) {
+        const cells = row.children;
+        if (cells.length < 2) continue;
+        const nameText = (cells[0].textContent || '').trim();
+        const dateText = (cells[1].textContent || '').trim();
+        if (nameText === 'Artifact Name' || !nameText) continue;
+        artifacts.push({ name: nameText, lastUpdated: dateText || null });
+      }
 
-          // Text might be "Artifact Panel Debug (Yesterday 11:23 PM)"
-          // Let's match the date in parentheses at the end. It can be like "(Mar 10 11:23 PM)" or "(Yesterday...)"
-          const dateMatch = text.match(/\(([^)]+\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)\)$/i);
+      // Fallback: TreeWalker
+      if (artifacts.length === 0) {
+        const walker = document.createTreeWalker(section, NodeFilter.SHOW_TEXT);
+        const allTexts: string[] = [];
+        while (walker.nextNode()) {
+          const t = walker.currentNode.textContent?.trim();
+          if (t && t.length > 0) allTexts.push(t);
+        }
+
+        for (let i = 0; i < allTexts.length; i++) {
+          const text = allTexts[i];
+          if (
+            text === 'Artifact Name' || text === 'Last Updated' ||
+            text.startsWith('Artifacts (') || text === 'Review Changes'
+          ) continue;
+          if (/^\.\w+$/.test(text)) continue;
+
+          const dateMatch = text.match(/\(([A-Z][a-z]{2}\s+\d{1,2}\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)\)$/);
           if (dateMatch) {
             const name = text.replace(dateMatch[0], '').trim();
             if (name) artifacts.push({ name, lastUpdated: dateMatch[1] });
-          } else {
-            artifacts.push({ name: text, lastUpdated: null });
+          } else if (text.match(/^.+\.(md|json|txt|ts|tsx|js|jsx|css|html|yaml|yml|py|sh)$/)) {
+            const nextText = allTexts[i + 1] || '';
+            const nextDate = nextText.match(/^[A-Z][a-z]{2}\s+\d{1,2}\s+\d{1,2}:\d{2}/);
+            artifacts.push({ name: text, lastUpdated: nextDate ? nextText : null });
+            if (nextDate) i++;
           }
-        }
-      } else {
-        // Fallback: older DOM where they were flex rows
-        const rows = section.querySelectorAll('.flex.w-full.flex-row.items-center.justify-between');
-        for (const row of rows) {
-          const cells = row.children;
-          if (cells.length < 2) continue;
-          const nameText = (cells[0].textContent || '').trim();
-          const dateText = (cells[1].textContent || '').trim();
-          if (nameText === 'Artifact Name' || !nameText) continue;
-          artifacts.push({ name: nameText, lastUpdated: dateText || null });
         }
       }
 
-      return { totalCount, artifacts, html: section.innerHTML.substring(0, 5000) };
+      return { totalCount, artifacts };
     });
 
     // ── Phase 4: Close and restore ──────────────────────────────────────

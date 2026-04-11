@@ -57,10 +57,12 @@ async function clickChangesButton(
       if (!gapContainer) return { success: false, error: 'No gap container' };
 
       // ── Detect panel state ──
-      // Uses "File With Changes" which matches both singular and plural
-      let section = Array.from(gapContainer.children).find(c =>
-        (c.textContent || '').includes('File With Changes')
-      ) as HTMLElement | undefined;
+      // Uses "With Changes" to match both "N Files With Changes" and "N File With Changes"
+      // (the IDE always uses plural "Files" now, but we match broadly for safety)
+      let section = Array.from(gapContainer.children).find(c => {
+        const t = c.textContent || '';
+        return t.includes('With Changes') && !t.includes('Review Changes');
+      }) as HTMLElement | undefined;
 
       if (!section) {
         // Panel is CLOSED — check if there are even changes to show
@@ -80,9 +82,10 @@ async function clickChangesButton(
         // Wait for the section to appear (up to 5s)
         for (let i = 0; i < 20; i++) {
           await new Promise(r => setTimeout(r, 250));
-          section = Array.from(gapContainer.children).find(c =>
-            (c.textContent || '').includes('File With Changes')
-          ) as HTMLElement | undefined;
+          section = Array.from(gapContainer.children).find(c => {
+            const t = c.textContent || '';
+            return t.includes('With Changes') && !t.includes('Review Changes');
+          }) as HTMLElement | undefined;
           if (section) break;
         }
       }
@@ -93,48 +96,48 @@ async function clickChangesButton(
       }
 
       // ── Find and click the target button ──
-      const buttons = Array.from(section.querySelectorAll('button'));
+      // NOTE: The IDE renders "Accept all" and "Reject all" as clickable
+      // <span> elements, NOT <button> elements. We must search both.
+      const allClickables = Array.from(section.querySelectorAll('button, span[class*="cursor-pointer"]'));
 
-      // Strategy 1: exact case-insensitive match on button text
-      let targetBtn = buttons.find(b => {
-        const t = (b.textContent || '').trim().toLowerCase();
-        return t === targetText && !b.disabled;
-      });
+      // Strategy 1: exact case-insensitive text match
+      let targetBtn = allClickables.find(el => {
+        const t = (el.textContent || '').trim().toLowerCase();
+        return t === targetText && !(el as HTMLElement).hidden;
+      }) as HTMLElement | undefined;
 
-      // Strategy 2: partial match (button text contains target)
+      // Strategy 2: partial match (element text contains target)
       if (!targetBtn) {
-        targetBtn = buttons.find(b => {
-          const t = (b.textContent || '').trim().toLowerCase();
-          return t.includes(targetText) && !b.disabled;
-        });
+        targetBtn = allClickables.find(el => {
+          const t = (el.textContent || '').trim().toLowerCase();
+          return t.includes(targetText) && !(el as HTMLElement).hidden;
+        }) as HTMLElement | undefined;
       }
 
-      // Strategy 3: look at ALL clickable elements
+      // Strategy 3: look at ALL elements with cursor-pointer class
       if (!targetBtn) {
-        const allElements = Array.from(section.querySelectorAll('*'));
+        const allElements = Array.from(section.querySelectorAll('[class*="cursor-pointer"]'));
         const matchEl = allElements.find(el => {
           const t = (el.textContent || '').trim().toLowerCase();
-          return t === targetText && typeof (el as HTMLElement).click === 'function';
+          return t === targetText;
         }) as HTMLElement | undefined;
         if (matchEl) {
           dispatchClick(matchEl);
-          // DO NOT close the panel — leave it open to prevent flashing
           return { success: true, clicked: (matchEl.textContent || '').trim() };
         }
       }
 
       if (targetBtn) {
         dispatchClick(targetBtn);
-        // DO NOT close the panel — leave it open to prevent flashing
         return { success: true, clicked: (targetBtn.textContent || '').trim() };
       }
 
-      // Debug: list all button texts found for troubleshooting
-      const foundButtons = buttons.map(b => b.textContent?.trim()).filter(Boolean);
+      // Debug: list all clickable element texts found for troubleshooting
+      const foundElements = allClickables.map(el => el.textContent?.trim()).filter(Boolean);
 
       return {
         success: false,
-        error: `"${targetText}" button not found. Buttons in section: [${foundButtons.join(', ')}]`,
+        error: `"${targetText}" not found. Clickable elements in section: [${foundElements.join(', ')}]`,
       };
     }, buttonText);
   });

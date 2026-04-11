@@ -34,7 +34,9 @@ export default function ArtifactPanel({ open, onClose, activeConversation, files
     return mtime;
   };
 
-  /** Open a file artifact (only for actual files with extensions) */
+  const [contentType, setContentType] = useState('text/plain');
+
+  /** Open a file artifact */
   const openFile = async (fileName: string) => {
     setLoading(true);
     setViewingFile(fileName);
@@ -45,8 +47,22 @@ export default function ArtifactPanel({ open, onClose, activeConversation, files
         setFileContent(`Error: ${errorData.error || res.statusText}`);
         return;
       }
-      const text = await res.text();
-      setFileContent(text);
+      const cType = res.headers.get('Content-Type') || 'text/plain';
+      setContentType(cType);
+      if (cType.includes('image')) {
+        const buffer = await res.arrayBuffer();
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        const base64 = typeof window !== 'undefined' ? window.btoa(binary) : '';
+        setFileContent(base64);
+      } else {
+        const text = await res.text();
+        setFileContent(text);
+      }
     } catch (e: any) {
       setFileContent(`Error loading file: ${e.message}`);
     } finally {
@@ -55,8 +71,8 @@ export default function ArtifactPanel({ open, onClose, activeConversation, files
   };
 
   const isOpenable = (f: ArtifactFile) => {
-    // A file is openable if it has a file extension
-    return f.isFile !== false && /\.\w{1,5}$/.test(f.name);
+    // Make all artifacts clickable (the backend now resolves fuzzy names)
+    return true;
   };
 
   const fileIcon = (f: ArtifactFile) => {
@@ -128,7 +144,7 @@ export default function ArtifactPanel({ open, onClose, activeConversation, files
           <div className="artifact-viewer-body">
             {loading ? (
               <div style={{ color: 'var(--text-muted)', padding: '16px' }}>Loading...</div>
-            ) : viewingFile.endsWith('.md') ? (
+            ) : contentType.includes('markdown') ? (
               <div className="agent-response" dangerouslySetInnerHTML={{
                 __html: fileContent
                   .replace(/^### (.*$)/gim, '<h3>$1</h3>')
@@ -140,6 +156,12 @@ export default function ArtifactPanel({ open, onClose, activeConversation, files
                   .replace(/\n\n/g, '</p><p>')
                   .replace(/\n/g, '<br/>')
               }} />
+            ) : contentType.includes('image') ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                 <img src={`data:${contentType};base64,${fileContent}`} 
+                      style={{ maxWidth: '100%', borderRadius: '8px', border: '1px solid var(--border-subtle)' }} 
+                      alt={viewingFile} />
+              </div>
             ) : (
               <pre style={{ margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--text-secondary)', fontFamily: "'JetBrains Mono', monospace", whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
                 {fileContent}

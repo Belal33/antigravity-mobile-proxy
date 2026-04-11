@@ -22,8 +22,27 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 /**
+ * Converts a disk filename to an IDE-style human-readable artifact name.
+ * e.g. "artifact_panel_debug_1775942625462.webp" -> "Artifact Panel Debug"
+ *      "dom_scraper_test_report.md" -> "Dom Scraper Test Report"
+ */
+function toHumanReadableName(filename: string): string {
+  // Strip extension
+  let name = filename.replace(/\.\w+$/, '');
+  // Strip numeric suffix (e.g. _1775942625462)
+  name = name.replace(/_\d{10,}$/, '');
+  // Replace underscores and dashes with spaces
+  name = name.replace(/[_-]/g, ' ');
+  // Title case
+  return name.split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ')
+    .trim();
+}
+
+/**
  * Search ALL brain conversation directories for a file matching the given name.
- * Returns the first match found (most recently modified directory first).
+ * Matches either exact filename OR the human-readable IDE display name.
  */
 function findFileInBrain(fileName: string): string | null {
   try {
@@ -40,16 +59,43 @@ function findFileInBrain(fileName: string): string | null {
       }))
       .sort((a, b) => b.mtime - a.mtime);
 
+    // Helper to search a specific directory
+    const searchDir = (dirPath: string): string | null => {
+      if (!fs.existsSync(dirPath)) return null;
+      
+      // Exact match first
+      const exactPath = path.join(dirPath, fileName);
+      if (fs.existsSync(exactPath) && fs.statSync(exactPath).isFile()) return exactPath;
+      
+      // Fuzzy matching against human-readable name
+      const files = fs.readdirSync(dirPath, { withFileTypes: true });
+      for (const file of files) {
+        if (!file.isFile()) continue;
+        const fName = file.name;
+        // Ignore internal metadata files
+        if (fName.endsWith('.metadata.json') || fName.includes('.resolved')) continue;
+        
+        const humanName = toHumanReadableName(fName);
+        // Case-insensitive comparison just in case
+        if (humanName.toLowerCase() === fileName.toLowerCase()) {
+          return path.join(dirPath, fName);
+        }
+      }
+      return null;
+    };
+
     // If we have a preferred conversation ID, check it first
     if (ctx.activeConversationId) {
-      const preferred = path.join(BRAIN_DIR, ctx.activeConversationId, fileName);
-      if (fs.existsSync(preferred)) return preferred;
+      const preferred = path.join(BRAIN_DIR, ctx.activeConversationId);
+      const match = searchDir(preferred);
+      if (match) return match;
     }
 
     // Otherwise search all directories
     for (const dir of dirs) {
-      const filePath = path.join(BRAIN_DIR, dir.name, fileName);
-      if (fs.existsSync(filePath)) return filePath;
+      const dirPath = path.join(BRAIN_DIR, dir.name);
+      const match = searchDir(dirPath);
+      if (match) return match;
     }
 
     return null;
@@ -88,7 +134,7 @@ export async function GET(
   }
 
   try {
-    const ext = path.extname(filename).toLowerCase();
+    const ext = path.extname(resolved).toLowerCase();
     const contentType = MIME_TYPES[ext] || 'text/plain; charset=utf-8';
     const content = fs.readFileSync(resolved, 'utf-8');
     return new NextResponse(content, {
