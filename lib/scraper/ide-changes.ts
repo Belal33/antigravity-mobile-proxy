@@ -59,10 +59,10 @@ export async function getIdeChanges(ctx: ProxyContext): Promise<IdeChangesResult
         if (!gapContainer) return { changes: [] as any[], totalCount: 0, error: 'no gap container' };
 
         // ── Detect panel state ──
-        // OPEN:   A child of gapContainer contains "File With Changes" (matches both singular & plural)
+        // OPEN:   A child of gapContainer contains "With Changes" (handles both "1 File" and "N Files")
         // CLOSED: A child contains "Review Changes" instead
         let section = Array.from(gapContainer.children).find(c =>
-          (c.textContent || '').includes('File With Changes')
+          (c.textContent || '').includes('With Changes') && !(c.textContent || '').includes('Review Changes')
         ) as HTMLElement | undefined;
 
         if (!section) {
@@ -96,7 +96,7 @@ export async function getIdeChanges(ctx: ProxyContext): Promise<IdeChangesResult
           for (let i = 0; i < 10; i++) {
             await new Promise(r => setTimeout(r, 300));
             section = Array.from(gapContainer.children).find(c =>
-              (c.textContent || '').includes('File With Changes')
+              (c.textContent || '').includes('With Changes') && !(c.textContent || '').includes('Review Changes')
             ) as HTMLElement | undefined;
             if (section) break;
           }
